@@ -1,7 +1,8 @@
 # main.py
 import sys
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QMessageBox, QSplitter
+from PyQt6.QtWidgets import QApplication, QDialog, QWidget, QVBoxLayout, QLabel, QMessageBox, QSplitter
 from PyQt6.QtCore import Qt
+from camera_dialog import CameraDialog  # Изменен импорт
 from widgets.header_widget import HeaderWidget
 from widgets.video_widget import VideoWidget
 
@@ -84,7 +85,7 @@ class MainWindow(QWidget):
         if item == "Открыть файл...":
             pass  # Сигнал уже обрабатывается в header_widget
         elif item == "Камера":
-            self.start_camera()
+            self.start_camera()  # Вызываем start_camera, а не show_camera_selection_dialog
     
     def on_button2_clicked(self, item):
         self.last_action_label.setText(f"Последнее действие: Правка → {item}")
@@ -118,7 +119,6 @@ class MainWindow(QWidget):
                 else:
                     self.video_widget.stop_video()
                 self.video_widget.current_video_path = None
-                self.show_welcome_message()
     
     def on_file_opened(self, file_path):
         """Обработчик открытия файла"""
@@ -144,21 +144,25 @@ class MainWindow(QWidget):
         self.video_widget.load_video(file_path)
     
     def start_camera(self):
-        """Запускает веб-камеру"""
-        self.last_action_label.setText("Последнее действие: Запуск камеры")
-        
-        # Восстанавливаем нормальный стиль QLabel
-        self.video_widget.video_label.setStyleSheet("""
-            QLabel {
-                background-color: black;
-                border: 2px solid #333;
-                border-radius: 5px;
-                min-height: 400px;
-            }
-        """)
-        
-        # Запускаем камеру (можно выбрать ID камеры, обычно 0 - первая камера)
-        self.video_widget.switch_to_camera_mode(camera_id=0)
+        """Запускает диалог выбора камеры"""
+        dialog = CameraDialog(self)  # Используем CameraDialog, а не CameraSelectionDialog
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            camera_id = dialog.get_selected_camera()
+            if camera_id is not None:
+                self.last_action_label.setText(f"Последнее действие: Запуск камеры (ID: {camera_id})")
+                
+                # Восстанавливаем нормальный стиль QLabel
+                self.video_widget.video_label.setStyleSheet("""
+                    QLabel {
+                        background-color: black;
+                        border: 2px solid #333;
+                        border-radius: 5px;
+                        min-height: 400px;
+                    }
+                """)
+                
+                # Запускаем выбранную камеру
+                self.video_widget.switch_to_camera_mode(camera_id=camera_id)
     
     def toggle_fullscreen(self):
         """Переключает полноэкранный режим"""

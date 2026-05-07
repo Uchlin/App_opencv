@@ -84,9 +84,16 @@ class HeaderWidget(QWidget):
         if button in self.dropdowns:
             self.dropdowns[button].hide()
         
-        # Специальная обработка для "Открыть файл..."
+        # Специальная обработка для пунктов меню
         if button == self.btn1 and item_text == "Открыть файл...":
             self.open_file_dialog()
+        elif button == self.btn1 and item_text == "Камера":
+            # Просто отправляем сигнал, выбор камеры будет в main.py
+            self.button1_clicked.emit(item_text)
+        elif button == self.btn1 and item_text == "Выход":
+            # Закрываем приложение
+            from PyQt6.QtWidgets import QApplication
+            QApplication.quit()
         else:
             # Для остальных пунктов отправляем сигнал
             if button == self.btn1:
