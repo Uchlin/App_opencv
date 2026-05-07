@@ -81,8 +81,10 @@ class MainWindow(QWidget):
     
     def on_button1_clicked(self, item):
         self.last_action_label.setText(f"Последнее действие: Файл → {item}")
-        if item == "Открыть...":
+        if item == "Открыть файл...":
             pass  # Сигнал уже обрабатывается в header_widget
+        elif item == "Камера":
+            self.start_camera()
     
     def on_button2_clicked(self, item):
         self.last_action_label.setText(f"Последнее действие: Правка → {item}")
@@ -106,12 +108,15 @@ class MainWindow(QWidget):
     def on_clear_clicked(self):
         self.last_action_label.setText("Последнее действие: -")
         # Очищаем видео, если оно загружено
-        if self.video_widget and self.video_widget.current_video_path:
-            reply = QMessageBox.question(self, "Очистить видео",
-                                       "Вы действительно хотите закрыть текущее видео?",
+        if self.video_widget.current_video_path or self.video_widget.is_camera_mode:
+            reply = QMessageBox.question(self, "Очистить",
+                                       "Вы действительно хотите остановить текущее воспроизведение?",
                                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
             if reply == QMessageBox.StandardButton.Yes:
-                self.video_widget.stop_video()
+                if self.video_widget.is_camera_mode:
+                    self.video_widget.stop_camera()
+                else:
+                    self.video_widget.stop_video()
                 self.video_widget.current_video_path = None
                 self.show_welcome_message()
     
@@ -137,6 +142,23 @@ class MainWindow(QWidget):
         
         # Загружаем видео
         self.video_widget.load_video(file_path)
+    
+    def start_camera(self):
+        """Запускает веб-камеру"""
+        self.last_action_label.setText("Последнее действие: Запуск камеры")
+        
+        # Восстанавливаем нормальный стиль QLabel
+        self.video_widget.video_label.setStyleSheet("""
+            QLabel {
+                background-color: black;
+                border: 2px solid #333;
+                border-radius: 5px;
+                min-height: 400px;
+            }
+        """)
+        
+        # Запускаем камеру (можно выбрать ID камеры, обычно 0 - первая камера)
+        self.video_widget.switch_to_camera_mode(camera_id=0)
     
     def toggle_fullscreen(self):
         """Переключает полноэкранный режим"""

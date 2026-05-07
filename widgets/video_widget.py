@@ -1,16 +1,22 @@
-# video_widget.py
+# video_widget.py (обновленная версия)
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QSlider, QHBoxLayout, QPushButton
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap
 from video_thread import VideoPlayerThread
+from camera_thread import CameraThread
 
 class VideoWidget(QWidget):
-    """Виджет для отображения и управления видео"""
+    """Виджет для отображения и управления видео и камерой"""
+    
+    # Добавляем новые сигналы
+    camera_mode_changed = pyqtSignal(bool)  # True = камера, False = видео
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self.video_thread = None
+        self.camera_thread = None
         self.current_video_path = None
+        self.is_camera_mode = False
         self.setup_ui()
         
     def setup_ui(self):
@@ -18,7 +24,7 @@ class VideoWidget(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         
-        # Метка для отображения видео
+        # Метка для отображения видео/камеры
         self.video_label = QLabel()
         self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.video_label.setStyleSheet("""
@@ -49,9 +55,15 @@ class VideoWidget(QWidget):
         self.stop_btn.setEnabled(False)
         self.stop_btn.clicked.connect(self.stop_video)
         
+        # Новая кнопка для остановки камеры
+        self.stop_camera_btn = QPushButton("📷 Stop Camera")
+        self.stop_camera_btn.setEnabled(False)
+        self.stop_camera_btn.clicked.connect(self.stop_camera)
+        
         controls_layout.addWidget(self.play_btn)
         controls_layout.addWidget(self.pause_btn)
         controls_layout.addWidget(self.stop_btn)
+        controls_layout.addWidget(self.stop_camera_btn)
         
         # Слайдер позиции
         self.position_slider = QSlider(Qt.Orientation.Horizontal)
@@ -69,13 +81,14 @@ class VideoWidget(QWidget):
         
         # Изначально виджет скрыт
         self.show_placeholder()
+        
     def show_placeholder(self):
         """Показывает заглушку, когда видео не загружено"""
         self.video_label.setText(
             "🎬 Готов к работе\n\n"
             "Чтобы начать:\n"
-            "1. Нажмите 'Файл' → 'Открыть...'\n"
-            "2. Выберите видео файл"
+            "1. Нажмите 'Файл' → 'Открыть...' для видео\n"
+            "2. Нажмите 'Файл' → 'Камера' для веб-камеры"
         )
         self.video_label.setStyleSheet("""
             QLabel {
@@ -88,9 +101,72 @@ class VideoWidget(QWidget):
             }
         """)
         self.update_buttons_state(stopped=True)
+        self.stop_camera_btn.setEnabled(False)
+        
+    def switch_to_camera_mode(self, camera_id=0):
+        """Переключается на режим камеры"""
+        # Останавливаем текущее видео если оно есть
+        self.stop_video()
+        
+        # Останавливаем камеру если она уже запущена
+        if self.camera_thread:
+            self.stop_camera()
+            
+        # Создаём новый поток для камеры
+        self.camera_thread = CameraThread(camera_id)
+        
+        # Подключаем сигналы
+        self.camera_thread.frame_ready.connect(self.display_frame)
+        self.camera_thread.camera_error.connect(self.on_camera_error)
+        self.camera_thread.camera_started.connect(self.on_camera_started)
+        self.camera_thread.camera_stopped.connect(self.on_camera_stopped)
+        
+        # Запускаем камеру
+        if self.camera_thread.start_camera():
+            self.is_camera_mode = True
+            self.camera_mode_changed.emit(True)
+            # Скрываем кнопки управления видео
+            self.play_btn.setEnabled(False)
+            self.pause_btn.setEnabled(False)
+            self.stop_btn.setEnabled(False)
+            self.position_slider.setEnabled(False)
+            self.stop_camera_btn.setEnabled(True)
+            # Убираем отображение времени
+            self.time_label.setText("Камера (Live)")
+            self.video_label.setText("Запуск камеры...")
+        else:
+            self.show_placeholder()
+            
+    def stop_camera(self):
+        """Останавливает трансляцию с камеры"""
+        if self.camera_thread:
+            self.camera_thread.stop_camera()
+            self.camera_thread.deleteLater()
+            self.camera_thread = None
+            
+        self.is_camera_mode = False
+        self.camera_mode_changed.emit(False)
+        self.show_placeholder()
+        
+    def on_camera_started(self):
+        """Обработчик успешного запуска камеры"""
+        self.video_label.setText("Камера запущена")
+        
+    def on_camera_stopped(self):
+        """Обработчик остановки камеры"""
+        self.show_placeholder()
+        
+    def on_camera_error(self, error_message):
+        """Обработчик ошибок камеры"""
+        self.video_label.setText(f"Ошибка камеры: {error_message}")
+        self.stop_camera()
         
     def init_video_thread(self):
         """Инициализирует новый поток для видео"""
+        # Если в режиме камеры, сначала выключаем камеру
+        if self.is_camera_mode:
+            self.stop_camera()
+            
         # Останавливаем и удаляем старый поток если есть
         if self.video_thread:
             self.video_thread.stop()
@@ -108,6 +184,10 @@ class VideoWidget(QWidget):
         
     def load_video(self, file_path: str):
         """Загружает видео файл"""
+        # Переключаемся в режим видео
+        if self.is_camera_mode:
+            self.stop_camera()
+            
         self.current_video_path = file_path
         self.init_video_thread()
         
@@ -126,6 +206,9 @@ class VideoWidget(QWidget):
             
     def play_video(self):
         """Начинает или возобновляет воспроизведение"""
+        if self.is_camera_mode:
+            return
+            
         if not self.current_video_path:
             return
             
@@ -144,7 +227,7 @@ class VideoWidget(QWidget):
             
     def pause_video(self):
         """Приостанавливает воспроизведение"""
-        if self.video_thread and self.video_thread.isRunning():
+        if not self.is_camera_mode and self.video_thread and self.video_thread.isRunning():
             self.video_thread.pause()
             self.update_buttons_state(paused=True)
             
@@ -152,15 +235,11 @@ class VideoWidget(QWidget):
         """Останавливает воспроизведение и сбрасывает позицию"""
         if self.video_thread:
             self.video_thread.stop()
-            # Не удаляем поток полностью, просто сбрасываем состояние
             self.update_buttons_state(stopped=True)
             self.video_label.clear()
             self.video_label.setText("Воспроизведение остановлено\nНажмите Play для начала")
             self.time_label.setText("00:00 / 00:00")
             self.position_slider.setValue(0)
-            
-            # Помечаем, что поток нужно будет пересоздать при следующем play
-            self.current_frame = 0
             
     def update_buttons_state(self, playing=False, paused=False, stopped=False):
         """Обновляет состояние кнопок"""
@@ -182,7 +261,7 @@ class VideoWidget(QWidget):
             
     def seek_video(self, position):
         """Перемещает позицию воспроизведения"""
-        if self.video_thread and self.video_thread.isRunning():
+        if not self.is_camera_mode and self.video_thread and self.video_thread.isRunning():
             self.video_thread.set_position(position)
             
     def display_frame(self, qt_image):
@@ -210,22 +289,15 @@ class VideoWidget(QWidget):
             self.play_btn.setEnabled(False)
             self.pause_btn.setEnabled(False)
             self.stop_btn.setEnabled(False)
-        else:
-            # Видео успешно загружено
-            pass
             
     def on_video_finished(self):
         """Обработчик окончания видео"""
-        # Видео закончилось, останавливаем и сбрасываем на начало
-        if self.video_thread:
+        if not self.is_camera_mode and self.video_thread:
             self.video_thread.stop()
             self.update_buttons_state(stopped=True)
             self.video_label.setText("Видео закончилось\nНажмите Play для повтора")
             self.position_slider.setValue(0)
             self.time_label.setText("00:00 / 00:00")
-            
-            # Сбрасываем позицию
-            self.current_frame = 0
             
     def on_duration_updated(self, total_frames):
         """Обновляет информацию о длительности видео"""
@@ -234,13 +306,14 @@ class VideoWidget(QWidget):
             
     def on_position_updated(self, current_frame):
         """Обновляет отображение текущей позиции"""
-        if not self.position_slider.isSliderDown() and self.video_thread:
-            self.position_slider.setValue(current_frame)
-            
-        if self.video_thread and self.video_thread.fps > 0:
-            current_seconds = current_frame / self.video_thread.fps
-            total_seconds = self.video_thread.total_frames / self.video_thread.fps if self.video_thread.total_frames > 0 else 0
-            self.time_label.setText(f"{self.format_time(current_seconds)} / {self.format_time(total_seconds)}")
+        if not self.is_camera_mode:
+            if not self.position_slider.isSliderDown() and self.video_thread:
+                self.position_slider.setValue(current_frame)
+                
+            if self.video_thread and self.video_thread.fps > 0:
+                current_seconds = current_frame / self.video_thread.fps
+                total_seconds = self.video_thread.total_frames / self.video_thread.fps if self.video_thread.total_frames > 0 else 0
+                self.time_label.setText(f"{self.format_time(current_seconds)} / {self.format_time(total_seconds)}")
             
     def format_time(self, seconds):
         """Конвертирует секунды в формат MM:SS"""
@@ -253,4 +326,3 @@ class VideoWidget(QWidget):
         super().resizeEvent(event)
         # При изменении размера виджета видео автоматически перемасштабируется
         # при следующем кадре через display_frame
-    

@@ -44,7 +44,7 @@ class HeaderWidget(QWidget):
         self.btn5 = QPushButton("Очистить")
         
         # Создаем выпадающие меню
-        menu1 = DropdownMenu(["Открыть файл...", "Сохранить", "Выход"], self)
+        menu1 = DropdownMenu(["Открыть файл...", "Камера", "Выход"], self)
         menu1.item_clicked.connect(lambda text: self.on_menu_item_clicked(self.btn1, text))
         self.dropdowns[self.btn1] = menu1
         
