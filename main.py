@@ -59,10 +59,6 @@ class MainWindow(QWidget):
         
         info_layout.addWidget(self.last_action_label)
         self.content_splitter.addWidget(info_widget)
-        
-        # Устанавливаем начальные размеры (видео занимает 70%, информационная панель 30%)
-        self.content_splitter.setSizes([400, 200])
-        
         main_layout.addWidget(self.content_splitter)
         self.setLayout(main_layout)
         self.apply_styles()

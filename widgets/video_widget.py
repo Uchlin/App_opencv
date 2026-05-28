@@ -7,83 +7,97 @@ from camera_thread import CameraThread
 
 class VideoWidget(QWidget):
     """Виджет для отображения и управления видео и камерой"""
-    
+    VIDEO_WIDTH = 320
+    VIDEO_HEIGHT = 240
     # Добавляем новые сигналы
     camera_mode_changed = pyqtSignal(bool)  # True = камера, False = видео
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("VideoWidget")
         self.video_thread = None
         self.camera_thread = None
         self.current_video_path = None
         self.is_camera_mode = False
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setup_ui()
-        
+        total_width = self.VIDEO_WIDTH + 20
+        total_height = self.VIDEO_HEIGHT + 80
+        self.setFixedSize(total_width, total_height)
+        self.setStyleSheet("""
+            #VideoWidget {
+            border: 5px solid red;
+            border-radius: 5px;
+        }
+    """)
     def setup_ui(self):
         """Создаёт интерфейс виджета"""
         layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        
         # Метка для отображения видео/камеры
         self.video_label = QLabel()
         self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.video_label.setFixedSize(self.VIDEO_WIDTH, self.VIDEO_HEIGHT)
         self.video_label.setStyleSheet("""
             QLabel {
                 background-color: black;
                 border: 2px solid #333;
                 border-radius: 5px;
-                min-height: 400px;
             }
         """)
-        layout.addWidget(self.video_label)
+        layout.addWidget(self.video_label, alignment=Qt.AlignmentFlag.AlignCenter)
+        # Контейнер для элементов управления (центрируем их)
+        controls_container = QWidget()
+        controls_container_layout = QVBoxLayout(controls_container)
+        controls_container_layout.setContentsMargins(0, 0, 0, 0)
+        controls_container_layout.setSpacing(5)
         
-        # Нижняя панель управления
-        controls_widget = QWidget()
-        controls_layout = QHBoxLayout(controls_widget)
-        controls_layout.setContentsMargins(5, 5, 5, 5)
+        # Слайдер позиции (делаем его по ширине видеоэкрана)
+        self.position_slider = QSlider(Qt.Orientation.Horizontal)
+        self.position_slider.setEnabled(False)
+        self.position_slider.sliderMoved.connect(self.seek_video)
+        self.position_slider.setFixedWidth(self.VIDEO_WIDTH)  # Фиксируем ширину слайдера
+        controls_container_layout.addWidget(self.position_slider, alignment=Qt.AlignmentFlag.AlignCenter)
+        
+        # Контейнер для кнопок и времени
+        buttons_widget = QWidget()
+        # controls_container.setStyleSheet("border: 1px solid blue;")
+        buttons_layout = QHBoxLayout(buttons_widget)
+        buttons_layout.setContentsMargins(0, 0, 0, 0)
+        buttons_layout.setSpacing(10)
         
         # Кнопки управления
-        self.play_btn = QPushButton("▶ Play")
-        self.play_btn.setEnabled(False)
-        self.play_btn.clicked.connect(self.play_video)
-        
-        self.pause_btn = QPushButton("⏸ Pause")
-        self.pause_btn.setEnabled(False)
-        self.pause_btn.clicked.connect(self.pause_video)
+        self.play_pause_btn = QPushButton("▶ Play")
+        self.play_pause_btn.setEnabled(False)
+        self.play_pause_btn.clicked.connect(self.toggle_play_pause)
         
         self.stop_btn = QPushButton("⏹ Stop")
         self.stop_btn.setEnabled(False)
         self.stop_btn.clicked.connect(self.stop_video)
         
-        # Новая кнопка для остановки камеры
         self.stop_camera_btn = QPushButton("📷 Stop Camera")
         self.stop_camera_btn.setEnabled(False)
         self.stop_camera_btn.clicked.connect(self.stop_camera)
         
-        controls_layout.addWidget(self.play_btn)
-        controls_layout.addWidget(self.pause_btn)
-        controls_layout.addWidget(self.stop_btn)
-        controls_layout.addWidget(self.stop_camera_btn)
-        
-        # Слайдер позиции
-        self.position_slider = QSlider(Qt.Orientation.Horizontal)
-        self.position_slider.setEnabled(False)
-        self.position_slider.sliderMoved.connect(self.seek_video)
-        controls_layout.addWidget(self.position_slider)
+        buttons_layout.addWidget(self.play_pause_btn)
+        buttons_layout.addWidget(self.stop_btn)
+        buttons_layout.addWidget(self.stop_camera_btn)
+        buttons_layout.addStretch()  # Добавляем растягивание справа
         
         # Метка времени
         self.time_label = QLabel("00:00 / 00:00")
         self.time_label.setMinimumWidth(100)
-        controls_layout.addWidget(self.time_label)
+        buttons_layout.addWidget(self.time_label)
         
-        layout.addWidget(controls_widget)
+        controls_container_layout.addWidget(buttons_widget)
+        # Добавляем контейнер с управлением в основной layout, центрируем
+        layout.addWidget(controls_container, alignment=Qt.AlignmentFlag.AlignCenter)
+        
         self.setLayout(layout)
-        
-        # Изначально виджет скрыт
         self.show_placeholder()
         
     def show_placeholder(self):
         """Показывает заглушку, когда видео не загружено"""
+        self.video_label.setFixedSize(self.VIDEO_WIDTH, self.VIDEO_HEIGHT)
         self.video_label.setText(
             "🎬 Готов к работе\n\n"
             "Чтобы начать:\n"
@@ -97,7 +111,6 @@ class VideoWidget(QWidget):
                 font-size: 16px;
                 border: 2px solid #333;
                 border-radius: 5px;
-                min-height: 400px;
             }
         """)
         self.update_buttons_state(stopped=True)
@@ -126,8 +139,7 @@ class VideoWidget(QWidget):
             self.is_camera_mode = True
             self.camera_mode_changed.emit(True)
             # Скрываем кнопки управления видео
-            self.play_btn.setEnabled(False)
-            self.pause_btn.setEnabled(False)
+            self.play_pause_btn.setEnabled(False)
             self.stop_btn.setEnabled(False)
             self.position_slider.setEnabled(False)
             self.stop_camera_btn.setEnabled(True)
@@ -150,6 +162,7 @@ class VideoWidget(QWidget):
         
     def on_camera_started(self):
         """Обработчик успешного запуска камеры"""
+        self.video_label.setFixedSize(self.VIDEO_WIDTH, self.VIDEO_HEIGHT)
         self.video_label.setText("Камера запущена")
         
     def on_camera_stopped(self):
@@ -187,7 +200,7 @@ class VideoWidget(QWidget):
         # Переключаемся в режим видео
         if self.is_camera_mode:
             self.stop_camera()
-            
+        self.video_label.setFixedSize(self.VIDEO_WIDTH, self.VIDEO_HEIGHT)
         self.current_video_path = file_path
         self.init_video_thread()
         
@@ -203,7 +216,15 @@ class VideoWidget(QWidget):
             self.play_video()
         else:
             self.video_label.setText("Ошибка загрузки видео")
-            
+    def toggle_play_pause(self):
+        """Переключает между воспроизведением и паузой"""
+        if not self.is_camera_mode:
+            if self.video_thread and self.video_thread.isRunning() and not self.video_thread.is_paused:
+                # Видео играет - ставим на паузу
+                self.pause_video()
+            else:
+                # Видео на паузе или остановлено - играем
+                self.play_video()
     def play_video(self):
         """Начинает или возобновляет воспроизведение"""
         if self.is_camera_mode:
@@ -235,27 +256,29 @@ class VideoWidget(QWidget):
         """Останавливает воспроизведение и сбрасывает позицию"""
         if self.video_thread:
             self.video_thread.stop()
+            self.video_label.setFixedSize(self.VIDEO_WIDTH, self.VIDEO_HEIGHT)
             self.update_buttons_state(stopped=True)
             self.video_label.clear()
             self.video_label.setText("Воспроизведение остановлено\nНажмите Play для начала")
             self.time_label.setText("00:00 / 00:00")
             self.position_slider.setValue(0)
+            self.play_pause_btn.setText("▶ Play")  # Убеждаемся, что текст правильный
             
     def update_buttons_state(self, playing=False, paused=False, stopped=False):
         """Обновляет состояние кнопок"""
         if playing:
-            self.play_btn.setEnabled(False)
-            self.pause_btn.setEnabled(True)
+            self.play_pause_btn.setText("⏸ Pause")
+            self.play_pause_btn.setEnabled(True)
             self.stop_btn.setEnabled(True)
             self.position_slider.setEnabled(True)
         elif paused:
-            self.play_btn.setEnabled(True)
-            self.pause_btn.setEnabled(False)
+            self.play_pause_btn.setText("▶ Play")
+            self.play_pause_btn.setEnabled(True)
             self.stop_btn.setEnabled(True)
             self.position_slider.setEnabled(True)
         elif stopped:
-            self.play_btn.setEnabled(True)
-            self.pause_btn.setEnabled(False)
+            self.play_pause_btn.setText("▶ Play")
+            self.play_pause_btn.setEnabled(True)
             self.stop_btn.setEnabled(False)
             self.position_slider.setEnabled(False)
             
@@ -274,11 +297,14 @@ class VideoWidget(QWidget):
                 # Масштабируем изображение под размер QLabel
                 if not pixmap.isNull():
                     scaled_pixmap = pixmap.scaled(
-                        self.video_label.size(),
-                        Qt.AspectRatioMode.KeepAspectRatio,
+                        self.video_label.width(),  # Используем точную ширину
+                        self.video_label.height(), # Используем точную высоту
+                        Qt.AspectRatioMode.KeepAspectRatio,  # Сохраняем пропорции
                         Qt.TransformationMode.SmoothTransformation
                     )
+                    # Центрируем изображение в QLabel
                     self.video_label.setPixmap(scaled_pixmap)
+                    self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             except Exception as e:
                 print(f"Ошибка отображения кадра: {e}")
             
@@ -286,8 +312,7 @@ class VideoWidget(QWidget):
         """Обработчик события загрузки видео"""
         if not success:
             self.video_label.setText(f"Ошибка: {message}")
-            self.play_btn.setEnabled(False)
-            self.pause_btn.setEnabled(False)
+            self.play_pause_btn.setEnabled(False)
             self.stop_btn.setEnabled(False)
             
     def on_video_finished(self):
@@ -298,6 +323,7 @@ class VideoWidget(QWidget):
             self.video_label.setText("Видео закончилось\nНажмите Play для повтора")
             self.position_slider.setValue(0)
             self.time_label.setText("00:00 / 00:00")
+            self.play_pause_btn.setText("▶ Play")
             
     def on_duration_updated(self, total_frames):
         """Обновляет информацию о длительности видео"""
