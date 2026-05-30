@@ -4,7 +4,7 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap
 from video_thread import VideoPlayerThread
 from camera_thread import CameraThread
-
+from opencv_processor import OpenCVProcessor
 class VideoWidget(QWidget):
     """Виджет для отображения и управления видео и камерой"""
     VIDEO_WIDTH = 320
@@ -30,6 +30,9 @@ class VideoWidget(QWidget):
             border-radius: 5px;
         }
     """)
+        self.processor = OpenCVProcessor()
+        self.current_operation = "none"
+        self.operation_params = {}
     def setup_ui(self):
         """Создаёт интерфейс виджета"""
         layout = QVBoxLayout()
@@ -57,10 +60,8 @@ class VideoWidget(QWidget):
         self.position_slider.sliderMoved.connect(self.seek_video)
         self.position_slider.setFixedWidth(self.VIDEO_WIDTH)  # Фиксируем ширину слайдера
         controls_container_layout.addWidget(self.position_slider, alignment=Qt.AlignmentFlag.AlignCenter)
-        
         # Контейнер для кнопок и времени
         buttons_widget = QWidget()
-        # controls_container.setStyleSheet("border: 1px solid blue;")
         buttons_layout = QHBoxLayout(buttons_widget)
         buttons_layout.setContentsMargins(0, 0, 0, 0)
         buttons_layout.setSpacing(10)
@@ -286,25 +287,40 @@ class VideoWidget(QWidget):
         """Перемещает позицию воспроизведения"""
         if not self.is_camera_mode and self.video_thread and self.video_thread.isRunning():
             self.video_thread.set_position(position)
-            
+
     def display_frame(self, qt_image):
         """Отображает кадр на QLabel"""
         if not qt_image.isNull() and self.video_label:
             try:
+                # Если есть активный эффект, обрабатываем кадр
+                if hasattr(self, 'current_operation') and self.current_operation != "none":
+                    # Конвертируем QImage в numpy array для OpenCV
+                    frame = self.processor.qimage_to_numpy(qt_image)
+                    
+                    if frame is not None:
+                        # Применяем эффект
+                        processed_frame = self.processor.process_frame(
+                            frame, self.current_operation, self.operation_params
+                        )
+                        
+                        # Конвертируем обратно в QImage
+                        qt_image = self.processor.numpy_to_qimage(processed_frame)
+                
                 # Преобразуем QImage в QPixmap
                 pixmap = QPixmap.fromImage(qt_image)
                 
                 # Масштабируем изображение под размер QLabel
                 if not pixmap.isNull():
                     scaled_pixmap = pixmap.scaled(
-                        self.video_label.width(),  # Используем точную ширину
-                        self.video_label.height(), # Используем точную высоту
-                        Qt.AspectRatioMode.KeepAspectRatio,  # Сохраняем пропорции
+                        self.video_label.width(),
+                        self.video_label.height(),
+                        Qt.AspectRatioMode.KeepAspectRatio,
                         Qt.TransformationMode.SmoothTransformation
                     )
                     # Центрируем изображение в QLabel
                     self.video_label.setPixmap(scaled_pixmap)
                     self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    
             except Exception as e:
                 print(f"Ошибка отображения кадра: {e}")
             
@@ -352,3 +368,13 @@ class VideoWidget(QWidget):
         super().resizeEvent(event)
         # При изменении размера виджета видео автоматически перемасштабируется
         # при следующем кадре через display_frame
+    def apply_effect(self, operation, params=None):
+        """Применяет эффект к текущему видео/камере"""
+        self.current_operation = operation
+        self.operation_params = params or {}
+    def reset_effects(self):
+        """Сбрасывает все эффекты"""
+        # Отключаем эффект
+        self.current_operation = "none"
+        self.operation_params = {}
+    

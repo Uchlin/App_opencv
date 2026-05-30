@@ -1,11 +1,13 @@
 # main.py
 import sys
-from PyQt6.QtWidgets import QApplication, QDialog, QWidget, QVBoxLayout, QLabel, QMessageBox, QSplitter
+from PyQt6.QtWidgets import QApplication, QDialog, QHBoxLayout, QWidget, QVBoxLayout, QLabel, QMessageBox, QSplitter
 from PyQt6.QtCore import Qt
 from camera_dialog import CameraDialog  # Изменен импорт
+from widgets.datetime_widget import DateTimeWidget
 from widgets.header_widget import HeaderWidget
+from widgets.table_widget import InfoTableWidget
 from widgets.video_widget import VideoWidget
-
+from widgets.effects_widget import EffectsWidget 
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
@@ -14,7 +16,7 @@ class MainWindow(QWidget):
     
     def initUI(self):
         self.setWindowTitle("Мультимедийное приложение")
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(100, 100, 1000, 600)  # Увеличил ширину для виджета эффектов
         self.setContentsMargins(0, 0, 0, 0)
         
         main_layout = QVBoxLayout()
@@ -33,14 +35,41 @@ class MainWindow(QWidget):
         self.header.file_opened.connect(self.on_file_opened)
         
         main_layout.addWidget(self.header)
+        # Создаём горизонтальный layout для левой панели (дата/время + эффекты) и видео
+        content_layout = QHBoxLayout()
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+        # Создаём горизонтальный layout для виджета эффектов и видео
+        left_panel = QWidget()
+        left_panel.setFixedWidth(250)
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(0)
+        # Добавляем виджет даты и времени сверху
+        self.datetime_widget = DateTimeWidget()
+        left_layout.addWidget(self.datetime_widget)
+        # Добавляем виджет эффектов слева
+        self.effects_widget = EffectsWidget()
+        self.effects_widget.effect_applied.connect(self.on_effect_applied)
+        self.effects_widget.effect_reset.connect(self.on_effect_reset)
+        left_layout.addWidget(self.effects_widget)
         
-        # Создаём разделитель для видео и информационной панели
-        self.content_splitter = QSplitter(Qt.Orientation.Vertical)
+        content_layout.addWidget(left_panel)
         
-        # Создаём виджет для видео (всегда видим)
+        # Создаём правую часть (видео + информация)
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(0)
+        
+        # Создаём виджет для видео
         self.video_widget = VideoWidget()
-        self.content_splitter.addWidget(self.video_widget)
-        
+        right_layout.addWidget(self.video_widget)
+        # Виджет таблицы 
+        self.info_table = InfoTableWidget()
+        self.info_table.setMaximumHeight(200) # высота
+        self.info_table.row_selected.connect(self.on_table_row_selected)
+        right_layout.addWidget(self.info_table)
         # Информационная панель внизу
         info_widget = QWidget()
         info_layout = QVBoxLayout(info_widget)
@@ -58,8 +87,11 @@ class MainWindow(QWidget):
         """)
         
         info_layout.addWidget(self.last_action_label)
-        self.content_splitter.addWidget(info_widget)
-        main_layout.addWidget(self.content_splitter)
+        right_layout.addWidget(info_widget)
+        
+        content_layout.addWidget(right_widget)  # Добавляем правую часть
+        main_layout.addLayout(content_layout)   # Добавляем горизонтальный layout
+        
         self.setLayout(main_layout)
         self.apply_styles()
         
@@ -166,7 +198,22 @@ class MainWindow(QWidget):
             self.showNormal()
         else:
             self.showFullScreen()
+    def on_effect_applied(self, effect_name, params):
+        """Применяет выбранный эффект к видео"""
+        if self.video_widget:
+            self.video_widget.apply_effect(effect_name, params)
+            self.last_action_label.setText(f"Последнее действие: Применён эффект '{effect_name}'")
 
+    def on_effect_reset(self):
+        """Сбрасывает эффекты"""
+        if self.video_widget:
+            self.video_widget.reset_effects()
+            self.last_action_label.setText("Последнее действие: Эффекты сброшены")
+    def on_table_row_selected(self, row, data):
+        """Обработчик выбора строки в таблице"""
+        # Можно добавить дополнительную логику при выборе строки
+        print(f"Выбрана строка {row}: {data}")
+    
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
