@@ -26,7 +26,7 @@ class VideoWidget(QWidget):
         self.setFixedSize(total_width, total_height)
         self.setStyleSheet("""
             #VideoWidget {
-            border: 5px solid red;
+            border: 2px solid lightgrey;
             border-radius: 5px;
         }
     """)
