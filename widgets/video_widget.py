@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QSlider, QHBoxLayout, 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap
 import cv2
+from image_thread import ImageLoaderThread
 from video_thread import VideoPlayerThread
 from camera_thread import CameraThread
 from opencv_processor import OpenCVProcessor
@@ -20,6 +21,9 @@ class VideoWidget(QWidget):
         self.video_thread = None
         self.camera_thread = None
         self.current_video_path = None
+        self.image_thread = None
+        self.current_image = None
+        self.is_image_mode = False
         self.is_camera_mode = False
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setup_ui()
@@ -236,6 +240,37 @@ class VideoWidget(QWidget):
             self.play_video()
         else:
             self.video_label.setText("Ошибка загрузки видео")
+    def load_image(self, file_path: str):
+        """Загружает изображение"""
+        # Останавливаем видео и камеру
+        self.stop_video()
+        self.stop_camera()
+        
+        self.current_video_path = file_path
+        self.is_image_mode = True
+        self.is_camera_mode = False
+        
+        # Создаем поток для загрузки изображения
+        self.image_thread = ImageLoaderThread()
+        self.image_thread.image_loaded.connect(self.display_image)
+        self.image_thread.image_error.connect(self.on_image_error)
+        self.image_thread.load_image(file_path)
+        
+        # Обновляем UI
+        self.time_label.setText("Изображение")
+        self.play_pause_btn.setEnabled(False)
+        self.stop_btn.setEnabled(True)
+        self.position_slider.setEnabled(False)
+
+    def display_image(self, qt_image):
+        """Отображает изображение"""
+        self.current_image = qt_image
+        self.display_frame(qt_image)
+
+    def on_image_error(self, error_message):
+        """Обработчик ошибки загрузки изображения"""
+        self.video_label.setText(f"Ошибка: {error_message}")
+        self.show_placeholder()
     def toggle_play_pause(self):
         """Переключает между воспроизведением и паузой"""
         if not self.is_camera_mode:
@@ -273,16 +308,22 @@ class VideoWidget(QWidget):
             self.update_buttons_state(paused=True)
             
     def stop_video(self):
-        """Останавливает воспроизведение и сбрасывает позицию"""
+        """Останавливает воспроизведение"""
         if self.video_thread:
             self.video_thread.stop()
-            self.video_label.setFixedSize(self.VIDEO_WIDTH, self.VIDEO_HEIGHT)
-            self.update_buttons_state(stopped=True)
-            self.video_label.clear()
-            self.video_label.setText("Воспроизведение остановлено\nНажмите Play для начала")
-            self.time_label.setText("00:00 / 00:00")
-            self.position_slider.setValue(0)
-            self.play_pause_btn.setText("▶ Play")  # Убеждаемся, что текст правильный
+        
+        if self.image_thread and self.image_thread.isRunning():
+            self.image_thread.quit()
+            self.image_thread.wait()
+        
+        self.is_image_mode = False
+        self.video_label.setFixedSize(self.VIDEO_WIDTH, self.VIDEO_HEIGHT)
+        self.update_buttons_state(stopped=True)
+        self.video_label.clear()
+        self.video_label.setText("Воспроизведение остановлено\nНажмите Play для начала")
+        self.time_label.setText("00:00 / 00:00")
+        self.position_slider.setValue(0)
+        self.play_pause_btn.setText("▶ Play")
             
     def update_buttons_state(self, playing=False, paused=False, stopped=False):
         """Обновляет состояние кнопок"""
@@ -484,9 +525,20 @@ class VideoWidget(QWidget):
         # При изменении размера виджета видео автоматически перемасштабируется
         # при следующем кадре через display_frame
     def apply_effect(self, operation, params=None):
-        """Применяет эффект к текущему видео/камере"""
+        """Применяет эффект к текущему видео/камере/изображению"""
         self.current_operation = operation
         self.operation_params = params or {}
+        
+        # Если открыто изображение, применяем эффект сразу
+        if self.is_image_mode and self.current_image:
+            frame = self.processor.qimage_to_numpy(self.current_image)
+            if frame is not None:
+                processed_frame = self.processor.process_frame(
+                    frame, operation, params
+                )
+                if processed_frame is not None:
+                    qt_image = self.processor.numpy_to_qimage(processed_frame)
+                    self.display_frame(qt_image)
     def reset_effects(self):
         """Сбрасывает все эффекты"""
         # Отключаем эффект

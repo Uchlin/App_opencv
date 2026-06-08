@@ -178,26 +178,52 @@ class MainWindow(QWidget):
     
     def on_file_opened(self, file_path):
         """Обработчик открытия файла"""
-        # Показываем информационное сообщение
-        QMessageBox.information(
-            self,
-            "Файл открыт",
-            f"Вы открыли файл:\n{file_path}"
-        )
-        self.last_action_label.setText(f"Последнее действие: Открыт файл → {file_path}")
+        # Определяем тип файла по расширению
+        image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.gif']
+        video_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv']
         
-        # Восстанавливаем нормальный стиль QLabel
-        self.video_widget.video_label.setStyleSheet("""
-            QLabel {
-                background-color: black;
-                border: 2px solid #333;
-                border-radius: 5px;
-                min-height: 400px;
-            }
-        """)
+        file_ext = file_path.lower()
+        is_image = any(file_ext.endswith(ext) for ext in image_extensions)
+        is_video = any(file_ext.endswith(ext) for ext in video_extensions)
         
-        # Загружаем видео
-        self.video_widget.load_video(file_path)
+        if is_image:
+            action_name = "Открыто изображение"
+            details = f"Файл: {file_path.split('/')[-1]}"
+            self.info_table.add_row("Файл", action_name, details)
+            self.last_action_label.setText(f"Последнее действие: {action_name} → {file_path.split('/')[-1]}")
+            
+            # Загружаем изображение
+            self.video_widget.load_image(file_path)
+            
+        elif is_video:
+            # Существующий код для видео
+            QMessageBox.information(
+                self,
+                "Файл открыт",
+                f"Вы открыли файл:\n{file_path}"
+            )
+            self.last_action_label.setText(f"Последнее действие: Открыт файл → {file_path}")
+            
+            self.video_widget.video_label.setStyleSheet("""
+                QLabel {
+                    background-color: black;
+                    border: 2px solid #333;
+                    border-radius: 5px;
+                    min-height: 400px;
+                }
+            """)
+            
+            self.video_widget.load_video(file_path)
+            
+        else:
+            QMessageBox.warning(
+                self,
+                "Неподдерживаемый формат",
+                f"Файл {file_path} имеет неподдерживаемый формат.\n\n"
+                f"Поддерживаемые форматы:\n"
+                f"Видео: {', '.join(video_extensions)}\n"
+                f"Изображения: {', '.join(image_extensions)}"
+            )
     
     def start_camera(self):
         """Запускает диалог выбора камеры"""

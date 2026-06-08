@@ -54,7 +54,7 @@ class EffectsWidget(QWidget):
         title_text.setStyleSheet("background-color: transparent; font-weight: bold;")
         
         # Стрелка справа (создаем как QLabel)
-        self.arrow_label = QLabel("▼")
+        self.arrow_label = QLabel("◿")
         self.arrow_label.setStyleSheet("background-color: transparent; font-weight: bold; font-size: 14px;")
         
         btn_layout.addWidget(title_text)
@@ -146,7 +146,7 @@ class EffectsWidget(QWidget):
         person_title_text = QLabel("Поиск человека")
         person_title_text.setStyleSheet("background-color: transparent; font-weight: bold;")
 
-        self.person_arrow_label = QLabel("▼")
+        self.person_arrow_label = QLabel("◿")
         self.person_arrow_label.setStyleSheet("background-color: transparent; font-weight: bold; font-size: 14px;")
 
         person_btn_layout.addWidget(person_title_text)
@@ -194,9 +194,9 @@ class EffectsWidget(QWidget):
             is_checked = person_header_btn.isChecked()
             person_content_frame.setVisible(is_checked)
             if is_checked:
-                self.person_arrow_label.setText("▲")
+                self.person_arrow_label.setText("◹")
             else:
-                self.person_arrow_label.setText("▼")
+                self.person_arrow_label.setText("◿")
 
         person_header_btn.clicked.connect(toggle_person_content)
 
@@ -213,9 +213,9 @@ class EffectsWidget(QWidget):
             is_checked = header_btn.isChecked()
             content_frame.setVisible(is_checked)
             if is_checked:
-                self.arrow_label.setText("▲")
+                self.arrow_label.setText("◹")
             else:
-                self.arrow_label.setText("▼")
+                self.arrow_label.setText("◿")
         
         header_btn.clicked.connect(toggle_content)
         
