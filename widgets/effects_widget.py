@@ -12,7 +12,6 @@ class EffectsWidget(QWidget):
         super().__init__(parent)
         self.setup_ui()
         self.apply_styles()
-        
     def setup_ui(self):
         """Создаёт интерфейс виджета эффектов"""
         layout = QVBoxLayout()
@@ -117,6 +116,97 @@ class EffectsWidget(QWidget):
         sharpness_layout.addWidget(self.sharpness_slider, 1)
         sharpness_layout.addWidget(self.sharpness_value_label)
         content_layout.addLayout(sharpness_layout)
+        # Создаем второй заголовок для поиска человека
+        person_header_btn = QPushButton()
+        person_header_btn.setCheckable(True)
+        person_header_btn.setChecked(False)
+        person_header_btn.setFlat(True)
+        person_header_btn.setStyleSheet("""
+            QPushButton {
+                text-align: left;
+                font-weight: bold;
+                padding: 8px;
+                background-color: #f5f5f5;
+                border: 1px solid #ccc;
+                border-radius: 5px;
+                margin-top: 5px;
+            }
+            QPushButton:hover {
+                background-color: #e5e5e5;
+            }
+            QPushButton:checked {
+                background-color: #e5e5e5;
+            }
+        """)
+
+        # Layout для второго заголовка
+        person_btn_layout = QHBoxLayout(person_header_btn)
+        person_btn_layout.setContentsMargins(10, 5, 10, 5)
+
+        person_title_text = QLabel("Поиск человека")
+        person_title_text.setStyleSheet("background-color: transparent; font-weight: bold;")
+
+        self.person_arrow_label = QLabel("▼")
+        self.person_arrow_label.setStyleSheet("background-color: transparent; font-weight: bold; font-size: 14px;")
+
+        person_btn_layout.addWidget(person_title_text)
+        person_btn_layout.addStretch()
+        person_btn_layout.addWidget(self.person_arrow_label)
+
+        # Контейнер для содержимого поиска человека
+        person_content_frame = QFrame()
+        person_content_frame.setVisible(False)
+
+        person_content_layout = QVBoxLayout(person_content_frame)
+        person_content_layout.setContentsMargins(10, 10, 0, 10)
+        person_content_layout.setSpacing(8)
+
+        # Кнопка включения/выключения поиска
+        enable_detection_layout = QHBoxLayout()
+        self.enable_detection_checkbox = QPushButton("Включить поиск")
+        self.enable_detection_checkbox.setCheckable(True)
+        self.enable_detection_checkbox.setStyleSheet("""
+            QPushButton:checked {
+                background-color: #4CAF50;
+                color: white;
+            }
+        """)
+        enable_detection_layout.addWidget(self.enable_detection_checkbox)
+        person_content_layout.addLayout(enable_detection_layout)
+
+        # Порог уверенности
+        threshold_layout = QHBoxLayout()
+        threshold_label = QLabel("Порог:")
+        threshold_label.setFixedWidth(80)
+        self.threshold_slider = QSlider(Qt.Orientation.Horizontal)
+        self.threshold_slider.setRange(0, 100)
+        self.threshold_slider.setValue(50)
+        self.threshold_value_label = QLabel("0.5")
+        self.threshold_value_label.setFixedWidth(35)
+
+        threshold_layout.addWidget(threshold_label)
+        threshold_layout.addWidget(self.threshold_slider, 1)
+        threshold_layout.addWidget(self.threshold_value_label)
+        person_content_layout.addLayout(threshold_layout)
+
+        # Функция сворачивания для второго блока
+        def toggle_person_content():
+            is_checked = person_header_btn.isChecked()
+            person_content_frame.setVisible(is_checked)
+            if is_checked:
+                self.person_arrow_label.setText("▲")
+            else:
+                self.person_arrow_label.setText("▼")
+
+        person_header_btn.clicked.connect(toggle_person_content)
+
+        # Добавляем в основной layout
+        layout.addWidget(person_header_btn)
+        layout.addWidget(person_content_frame)
+
+        # Подключаем сигналы
+        self.enable_detection_checkbox.clicked.connect(self.on_detection_toggled)
+        self.threshold_slider.valueChanged.connect(self.on_threshold_changed)
         
         # Функция сворачивания/разворачивания
         def toggle_content():
@@ -189,6 +279,20 @@ class EffectsWidget(QWidget):
         self.sharpness_slider.setValue(0)
         self.effect_reset.emit()
         
+    def on_detection_toggled(self, checked):
+        """Включение/выключение поиска человека"""
+        if checked:
+            threshold = self.threshold_slider.value() / 100.0
+            self.effect_applied.emit("detect_person", {"enabled": True, "threshold": threshold})
+        else:
+            self.effect_applied.emit("detect_person", {"enabled": False})
+
+    def on_threshold_changed(self, value):
+        """Изменение порога уверенности"""
+        threshold = value / 100.0
+        self.threshold_value_label.setText(f"{threshold:.1f}")
+        if self.enable_detection_checkbox.isChecked():
+            self.effect_applied.emit("detect_person", {"enabled": True, "threshold": threshold})
     def apply_styles(self):
         """Применяет стили для виджета"""
         self.setStyleSheet("""

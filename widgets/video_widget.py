@@ -2,16 +2,18 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QSlider, QHBoxLayout, QPushButton
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap
+import cv2
 from video_thread import VideoPlayerThread
 from camera_thread import CameraThread
 from opencv_processor import OpenCVProcessor
+from person_detector import DetectionThread, PersonDetector
 class VideoWidget(QWidget):
     """Виджет для отображения и управления видео и камерой"""
     VIDEO_WIDTH = 320
     VIDEO_HEIGHT = 240
     # Добавляем новые сигналы
     camera_mode_changed = pyqtSignal(bool)  # True = камера, False = видео
-    
+    person_detected_signal = pyqtSignal(int, list)  # количество людей, список позиций
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("VideoWidget")
@@ -33,6 +35,20 @@ class VideoWidget(QWidget):
         self.processor = OpenCVProcessor()
         self.current_operation = "none"
         self.operation_params = {}
+        self.person_detector = PersonDetector()
+        self.person_detection_enabled = False
+        self.detection_threshold = 0.5
+        self.last_detection_time = 0
+        self.detection_cooldown = 2000  # миллисекунды между записями
+        self.current_frame = None # Кадр с нарисованными рамкам
+        self.frame_counter = 0  # ДОБАВЬТЕ ДЛЯ ОПТИМИЗАЦИИ
+        self.detection_interval = 3  # Каждый N кадр
+         # Подключаем сигнал обнаружения
+        self.person_detector.person_detected.connect(self.on_people_detected)
+        
+        # Создаем поток без аргументов
+        self.detection_thread = DetectionThread()  # УБРАЛИ АРГУМЕНТЫ
+        self.detection_thread.detection_ready.connect(self.on_detection_ready)
     def setup_ui(self):
         """Создаёт интерфейс виджета"""
         layout = QVBoxLayout()
@@ -152,6 +168,9 @@ class VideoWidget(QWidget):
             
     def stop_camera(self):
         """Останавливает трансляцию с камеры"""
+        if self.detection_thread and self.detection_thread.isRunning():
+            self.detection_thread.stop()
+        
         if self.camera_thread:
             self.camera_thread.stop_camera()
             self.camera_thread.deleteLater()
@@ -287,43 +306,139 @@ class VideoWidget(QWidget):
         """Перемещает позицию воспроизведения"""
         if not self.is_camera_mode and self.video_thread and self.video_thread.isRunning():
             self.video_thread.set_position(position)
+    # Добавьте метод для включения детектора:
+    def enable_person_detection(self, enabled, threshold=0.3):
+        """Включает/выключает обнаружение людей"""
+        self.person_detection_enabled = enabled
+        self.detection_threshold = threshold
+        self.frame_counter = 0  # Сброс счетчика
+        if not enabled:
+            self.last_detection_time = 0
+        else:
+            # Не начинаем детекцию сразу, ждем накопления кадров
+            pass
 
+    # Добавьте метод обработки обнаружения:
+    def on_people_detected(self, detections):
+        """Обработчик обнаружения людей"""
+        if not self.person_detection_enabled:
+            return
+        print(f"[DEBUG] Обнаружено {len(detections)} человек(а)")
+        from datetime import datetime
+        import time
+        
+        current_time = time.time() * 1000  # миллисекунды
+        
+        # Проверяем cooldown, чтобы не спамить в таблицу
+        if current_time - self.last_detection_time >= self.detection_cooldown:
+            self.last_detection_time = current_time
+            count = len(detections)
+            
+            # Получаем статистику о позициях
+            stats = self.person_detector.get_detection_statistics(
+                detections, 
+                (self.VIDEO_HEIGHT, self.VIDEO_WIDTH)
+            )
+            
+            # Создаем детальное описание
+            positions_str = ", ".join(stats["positions"]) if stats["positions"] else "неизвестно"
+            
+            # Отправляем сигнал в main для записи в таблицу
+            self.person_detected_signal.emit(count, stats["positions"])
     def display_frame(self, qt_image):
         """Отображает кадр на QLabel"""
         if not qt_image.isNull() and self.video_label:
             try:
+                # Увеличиваем счетчик кадров
+                self.frame_counter += 1
+                
+                current_frame = None
+                
                 # Если есть активный эффект, обрабатываем кадр
                 if hasattr(self, 'current_operation') and self.current_operation != "none":
-                    # Конвертируем QImage в numpy array для OpenCV
                     frame = self.processor.qimage_to_numpy(qt_image)
-                    
                     if frame is not None:
-                        # Применяем эффект
                         processed_frame = self.processor.process_frame(
                             frame, self.current_operation, self.operation_params
                         )
-                        
-                        # Конвертируем обратно в QImage
-                        qt_image = self.processor.numpy_to_qimage(processed_frame)
+                        if processed_frame is not None:
+                            qt_image = self.processor.numpy_to_qimage(processed_frame)
+                            current_frame = processed_frame
+                        else:
+                            current_frame = frame
+                    else:
+                        current_frame = None
+                else:
+                    # Конвертируем для детектора без эффектов
+                    current_frame = self.processor.qimage_to_numpy(qt_image)
                 
-                # Преобразуем QImage в QPixmap
-                pixmap = QPixmap.fromImage(qt_image)
+                # Сохраняем текущий кадр для on_detection_ready
+                self.current_frame = current_frame
                 
-                # Масштабируем изображение под размер QLabel
-                if not pixmap.isNull():
-                    scaled_pixmap = pixmap.scaled(
-                        self.video_label.width(),
-                        self.video_label.height(),
-                        Qt.AspectRatioMode.KeepAspectRatio,
-                        Qt.TransformationMode.SmoothTransformation
-                    )
-                    # Центрируем изображение в QLabel
-                    self.video_label.setPixmap(scaled_pixmap)
-                    self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                # ОБНАРУЖЕНИЕ ЛЮДЕЙ (только каждый N-кадр)
+                if (self.person_detection_enabled and 
+                    current_frame is not None and 
+                    self.frame_counter % self.detection_interval == 0 and
+                    not self.detection_thread.isRunning()):
+                    
+                    # Уменьшаем кадр для скорости
+                    small_frame = cv2.resize(current_frame, (160, 120))
+                    self.detection_thread.set_frame(small_frame, self.detection_threshold)
+                    self.detection_thread.start()
+                
+                # Отображаем кадр
+                if qt_image is not None and not qt_image.isNull():
+                    pixmap = QPixmap.fromImage(qt_image)
+                    if not pixmap.isNull():
+                        scaled_pixmap = pixmap.scaled(
+                            self.video_label.width(),
+                            self.video_label.height(),
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation
+                        )
+                        self.video_label.setPixmap(scaled_pixmap)
+                        self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     
             except Exception as e:
                 print(f"Ошибка отображения кадра: {e}")
+    def on_detection_ready(self, detections):
+        """Обработка результатов из потока"""
+        if detections and self.current_frame is not None:
+            # Масштабируем координаты обратно к исходному размеру
+            h, w = self.current_frame.shape[:2]
+            scale_x = w / 160
+            scale_y = h / 120
             
+            scaled_detections = []
+            for x, y, dw, dh in detections:
+                scaled_detections.append((
+                    int(x * scale_x),
+                    int(y * scale_y),
+                    int(dw * scale_x),
+                    int(dh * scale_y)
+                ))
+            
+            # Рисуем рамки на исходном кадре
+            if hasattr(self, 'current_frame') and self.current_frame is not None:
+                display_frame = self.current_frame.copy()
+                for x, y, w, h in scaled_detections:
+                    cv2.rectangle(display_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                
+                # Конвертируем обратно в QImage для отображения
+                qt_image = self.processor.numpy_to_qimage(display_frame)
+                if qt_image and not qt_image.isNull():
+                    pixmap = QPixmap.fromImage(qt_image)
+                    if not pixmap.isNull():
+                        scaled_pixmap = pixmap.scaled(
+                            self.video_label.width(),
+                            self.video_label.height(),
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation
+                        )
+                        self.video_label.setPixmap(scaled_pixmap)
+            
+            # Отправляем сигнал с количеством
+            self.person_detected_signal.emit(len(scaled_detections), scaled_detections)
     def on_video_loaded(self, success, message):
         """Обработчик события загрузки видео"""
         if not success:

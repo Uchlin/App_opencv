@@ -117,34 +117,42 @@ class OpenCVProcessor(QObject):
         cv2.circle(result, center, radius, color, thickness)
         return result
     
-    def qimage_to_numpy(self, qimage):
-        """Конвертирует QImage в numpy array (для OpenCV)"""
-        if qimage.isNull():
-            return None
-        
-        # Конвертируем в RGB888 формат
-        qimage = qimage.convertToFormat(QImage.Format.Format_RGB888)
-        width = qimage.width()
-        height = qimage.height()
-        
-        # Получаем данные
-        ptr = qimage.bits()
-        ptr.setsize(qimage.sizeInBytes())
-        
-        # Создаем numpy array
-        arr = np.array(ptr).reshape(height, width, 3)
-        
-        # Конвертируем RGB в BGR (для OpenCV)
-        return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
     
     def numpy_to_qimage(self, frame):
         """Конвертирует numpy array (OpenCV) в QImage"""
         if frame is None:
             return None
         
-        # Конвертируем BGR в RGB
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        height, width, channel = rgb_frame.shape
-        bytes_per_line = 3 * width
+        try:
+            # Конвертируем BGR в RGB
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            height, width, channel = rgb_frame.shape
+            bytes_per_line = 3 * width
+            
+            return QImage(rgb_frame.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
+        except Exception as e:
+            print(f"Ошибка конвертации в QImage: {e}")
+            return None
+    def qimage_to_numpy(self, qimage):
+        """Конвертирует QImage в numpy array (для OpenCV)"""
+        if qimage is None or qimage.isNull():
+            return None
         
-        return QImage(rgb_frame.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
+        try:
+            # Конвертируем в RGB888 формат
+            qimage = qimage.convertToFormat(QImage.Format.Format_RGB888)
+            width = qimage.width()
+            height = qimage.height()
+            
+            # Получаем данные
+            ptr = qimage.bits()
+            ptr.setsize(qimage.sizeInBytes())
+            
+            # Создаем numpy array
+            arr = np.array(ptr).reshape(height, width, 3)
+            
+            # Конвертируем RGB в BGR (для OpenCV)
+            return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+        except Exception as e:
+            print(f"Ошибка конвертации из QImage: {e}")
+            return None

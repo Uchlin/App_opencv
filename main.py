@@ -62,8 +62,10 @@ class MainWindow(QWidget):
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
         
-        # Создаём виджет для видео
+         # Создаём виджет для видео
         self.video_widget = VideoWidget()
+        # Подключаем сигнал обнаружения людей
+        self.video_widget.person_detected_signal.connect(self.on_person_detected)
         right_layout.addWidget(self.video_widget)
         # Виджет таблицы 
         self.info_table = InfoTableWidget()
@@ -94,7 +96,33 @@ class MainWindow(QWidget):
         
         self.setLayout(main_layout)
         self.apply_styles()
+    # Добавьте новый метод для обработки обнаружения людей:
+    def on_person_detected(self, count, positions):
+        """Обработчик обнаружения людей"""
+        # Формируем детальное сообщение
+        if count == 1:
+            action_name = "Обнаружен человек"
+        else:
+            action_name = f"Обнаружено {count} человек"
         
+        # Детали с позициями
+        if positions and len(positions) > 0:
+            # Преобразуем позиции в читаемый формат
+            pos_list = []
+            for i, pos in enumerate(positions):
+                if isinstance(pos, tuple):
+                    pos_list.append(f"#{i+1}: {pos}")
+                else:
+                    pos_list.append(pos)
+            details = f"{count} чел. Позиции: {', '.join(pos_list)}"
+        else:
+            details = f"Найдено {count} человек в кадре"
+        
+        # Добавляем запись в таблицу
+        self.info_table.add_row("Детекция", action_name, details)
+        
+        # Обновляем строку состояния
+        self.last_action_label.setText(f"Последнее действие: {action_name}")    
     def apply_styles(self):
         self.setStyleSheet("""
             QWidget {
@@ -201,8 +229,21 @@ class MainWindow(QWidget):
     def on_effect_applied(self, effect_name, params):
         """Применяет выбранный эффект к видео"""
         if self.video_widget:
-            self.video_widget.apply_effect(effect_name, params)
-            self.last_action_label.setText(f"Последнее действие: Применён эффект '{effect_name}'")
+            if effect_name == "detect_person":
+                # Включение/выключение детектора людей
+                enabled = params.get("enabled", False)
+                threshold = params.get("threshold", 0.5)
+                self.video_widget.enable_person_detection(enabled, threshold)
+                
+                if enabled:
+                    self.info_table.add_row("Детекция", "Поиск людей включён", f"Порог: {threshold}")
+                    self.last_action_label.setText(f"Последнее действие: Включён поиск людей (порог {threshold})")
+                else:
+                    self.info_table.add_row("Детекция", "Поиск людей выключен", "")
+                    self.last_action_label.setText("Последнее действие: Выключен поиск людей")
+            else:
+                self.video_widget.apply_effect(effect_name, params)
+                self.last_action_label.setText(f"Последнее действие: Применён эффект '{effect_name}'")
 
     def on_effect_reset(self):
         """Сбрасывает эффекты"""
