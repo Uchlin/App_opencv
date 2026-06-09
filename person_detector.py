@@ -195,24 +195,17 @@ class PersonDetector(QObject):
         return [(x1, y1, x2 - x1, y2 - y1) for (x1, y1, x2, y2) in filtered_boxes]
     
     def draw_detections(self, frame, detections: List[Tuple[int, int, int, int]], 
-                       color: Tuple[int, int, int] = (0, 255, 0),
-                       thickness: int = 2) -> np.ndarray:
-        """Рисует рамки вокруг обнаруженных людей"""
+                    color: Tuple[int, int, int] = (0, 255, 0),
+                    thickness: int = 2) -> np.ndarray:
+        """Рисует рамки вокруг обнаруженных людей (без подписей)"""
         if frame is None or len(detections) == 0:
             return frame
         
         result = frame.copy()
         
-        for i, (x, y, w, h) in enumerate(detections):
-            # Рисуем рамку
+        for (x, y, w, h) in detections:
+            # Только рамка, без текста
             cv2.rectangle(result, (x, y), (x + w, y + h), color, thickness)
-            
-            # Добавляем подпись
-            label = f"Person {i+1}"
-            (text_w, text_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
-            cv2.rectangle(result, (x, y - text_h - 5), (x + text_w, y), color, -1)
-            cv2.putText(result, label, (x, y - 5),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
         
         return result
     

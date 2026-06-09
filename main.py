@@ -125,20 +125,12 @@ class MainWindow(QWidget):
         # Обновляем строку состояния
         self.last_action_label.setText(f"Последнее действие: {action_name}")    
     def on_shelves_detected(self, shelves, cells):
-        """Обработчик обнаружения полок и ячеек"""
+        """Обработчик обнаружения ячеек"""
         total_cells = len(cells)
-        total_shelves = len(shelves)
         
-        if total_shelves > 0:
-            action_name = f"Обнаружено {total_shelves} полок"
-            details = f"Всего ячеек: {total_cells}"
-            
-            # Добавляем детали о каждой полке
-            shelf_details = []
-            for shelf in shelves:
-                shelf_details.append(f"Полка {shelf.shelf_id}: {len(shelf.cells)} ячеек")
-            if shelf_details:
-                details += f" ({', '.join(shelf_details)})"
+        if total_cells > 0:
+            action_name = f"Обнаружено {total_cells} ячеек"
+            details = f"Найдено {total_cells} ячеек на изображении"
             
             self.info_table.add_row("Детекция", action_name, details)
             self.last_action_label.setText(f"Последнее действие: {action_name}")
@@ -274,15 +266,20 @@ class MainWindow(QWidget):
     def on_effect_applied(self, effect_name, params):
         """Применяет выбранный эффект к видео"""
         if self.video_widget:
-            if effect_name == "detect_person":
-                # Включение/выключение детектора людей
+            if effect_name == "all":
+                # Цветовые настройки (яркость, контрастность, резкость)
+                self.video_widget.apply_effect(effect_name, params)
+                
+            elif effect_name == "detect_person":
                 enabled = params.get("enabled", False)
                 threshold = params.get("threshold", 0.5)
                 self.video_widget.enable_person_detection(enabled, threshold)
+                
             elif effect_name == "detect_shelves":
                 enabled = params.get("enabled", False)
-                method = params.get("method", "hybrid")
+                method = params.get("method", "yolo")
                 self.video_widget.enable_shelf_detection(enabled, method)
+                
             elif effect_name == "detect_shelves_manual":
                 enabled = params.get("enabled", False)
                 shelves_count = params.get("shelves_count", 0)

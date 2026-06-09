@@ -1,5 +1,5 @@
 # widgets/effects_widget.py
-from PyQt6.QtWidgets import QComboBox, QFrame, QSpinBox, QWidget, QVBoxLayout, QLabel, QPushButton, QGroupBox, QSlider, QHBoxLayout
+from PyQt6.QtWidgets import QCheckBox, QComboBox, QFrame, QSpinBox, QWidget, QVBoxLayout, QLabel, QPushButton, QGroupBox, QSlider, QHBoxLayout
 from PyQt6.QtCore import Qt, pyqtSignal
 
 class EffectsWidget(QWidget):
@@ -116,6 +116,10 @@ class EffectsWidget(QWidget):
         sharpness_layout.addWidget(self.sharpness_slider, 1)
         sharpness_layout.addWidget(self.sharpness_value_label)
         content_layout.addLayout(sharpness_layout)
+        # Кнопка сброса внутри цветовых настроек
+        reset_btn = QPushButton("Сбросить все эффекты")
+        reset_btn.clicked.connect(self.reset_effects)
+        content_layout.addWidget(reset_btn)
         # Создаем второй заголовок для поиска человека
         person_header_btn = QPushButton()
         person_header_btn.setCheckable(True)
@@ -139,193 +143,111 @@ class EffectsWidget(QWidget):
             }
         """)
 
-        # Layout для второго заголовка
-        person_btn_layout = QHBoxLayout(person_header_btn)
-        person_btn_layout.setContentsMargins(10, 5, 10, 5)
-
-        person_title_text = QLabel("Поиск человека")
-        person_title_text.setStyleSheet("background-color: transparent; font-weight: bold;")
-
-        self.person_arrow_label = QLabel("◿")
-        self.person_arrow_label.setStyleSheet("background-color: transparent; font-weight: bold; font-size: 14px;")
-
-        person_btn_layout.addWidget(person_title_text)
-        person_btn_layout.addStretch()
-        person_btn_layout.addWidget(self.person_arrow_label)
-
-        # Контейнер для содержимого поиска человека
-        person_content_frame = QFrame()
-        person_content_frame.setVisible(False)
-
-        person_content_layout = QVBoxLayout(person_content_frame)
-        person_content_layout.setContentsMargins(10, 10, 0, 10)
-        person_content_layout.setSpacing(8)
-
-        # Кнопка включения/выключения поиска
-        enable_detection_layout = QHBoxLayout()
-        self.enable_detection_checkbox = QPushButton("Включить поиск")
-        self.enable_detection_checkbox.setCheckable(True)
-        self.enable_detection_checkbox.setStyleSheet("""
-            QPushButton:checked {
-                background-color: #4CAF50;
-                color: white;
-            }
-        """)
-        enable_detection_layout.addWidget(self.enable_detection_checkbox)
-        person_content_layout.addLayout(enable_detection_layout)
-
-        # Порог уверенности
-        threshold_layout = QHBoxLayout()
-        threshold_label = QLabel("Порог:")
-        threshold_label.setFixedWidth(80)
-        self.threshold_slider = QSlider(Qt.Orientation.Horizontal)
-        self.threshold_slider.setRange(0, 100)
-        self.threshold_slider.setValue(50)
-        self.threshold_value_label = QLabel("0.5")
-        self.threshold_value_label.setFixedWidth(35)
-
-        threshold_layout.addWidget(threshold_label)
-        threshold_layout.addWidget(self.threshold_slider, 1)
-        threshold_layout.addWidget(self.threshold_value_label)
-        person_content_layout.addLayout(threshold_layout)
-        
-        # Третий заголовок для обнаружения полок
-        shelf_header_btn = QPushButton()
-        shelf_header_btn.setCheckable(True)
-        shelf_header_btn.setChecked(False)
-        shelf_header_btn.setFlat(True)
-        shelf_header_btn.setStyleSheet("""
-            QPushButton {
-                text-align: left;
-                font-weight: bold;
-                padding: 8px;
+        # Группа для поиска людей
+        person_group = QGroupBox()
+        person_group.setFixedHeight(40)
+        person_group.setStyleSheet("""
+            QGroupBox {
                 background-color: #f5f5f5;
                 border: 1px solid #ccc;
                 border-radius: 5px;
-                margin-top: 5px;
+                margin-top: 0px;
+                padding-top: 5px;
+                font-weight: bold;
+                font-size: 12px;
             }
-            QPushButton:hover {
-                background-color: #e5e5e5;
-            }
-            QPushButton:checked {
-                background-color: #e5e5e5;
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                top: -3px;
+                padding: 0 3px 0 3px;
             }
         """)
-        
-        shelf_btn_layout = QHBoxLayout(shelf_header_btn)
-        shelf_btn_layout.setContentsMargins(10, 5, 10, 5)
-        
-        shelf_title_text = QLabel("Обнаружение полок")
-        shelf_title_text.setStyleSheet("background-color: transparent; font-weight: bold;")
-        
-        self.shelf_arrow_label = QLabel("◿")
-        self.shelf_arrow_label.setStyleSheet("background-color: transparent; font-weight: bold; font-size: 14px;")
-        
-        shelf_btn_layout.addWidget(shelf_title_text)
-        shelf_btn_layout.addStretch()
-        shelf_btn_layout.addWidget(self.shelf_arrow_label)
-        
-        # Контейнер для содержимого обнаружения полок
-        shelf_content_frame = QFrame()
-        shelf_content_frame.setVisible(False)
-        
-        shelf_content_layout = QVBoxLayout(shelf_content_frame)
-        shelf_content_layout.setContentsMargins(10, 10, 0, 10)
-        shelf_content_layout.setSpacing(8)
-        
-        # Кнопка включения/выключения поиска полок
-        self.enable_shelf_checkbox = QPushButton("Включить поиск полок")
-        self.enable_shelf_checkbox.setCheckable(True)
-        self.enable_shelf_checkbox.setStyleSheet("""
-            QPushButton:checked {
+
+        person_layout = QVBoxLayout(person_group)
+        person_layout.setContentsMargins(10, 5, 10, 5)
+        person_layout.setSpacing(0)
+
+        self.enable_detection_checkbox = QCheckBox("Включить поиск людей")
+        self.enable_detection_checkbox.setStyleSheet("""
+            QCheckBox {
+                background-color: transparent;
+                color: #333;
+                spacing: 8px;
+                margin: 0px;
+                padding: 0px;
+                font-weight: bold;
+                font-size: 12px;
+            }
+            QCheckBox::indicator {
+                background-color: white;
+                border: 1px solid #999;
+                border-radius: 3px;
+                width: 14px;
+                height: 14px;
+            }
+            QCheckBox::indicator:checked {
                 background-color: #4CAF50;
-                color: white;
+                border-color: #4CAF50;
             }
         """)
-        shelf_content_layout.addWidget(self.enable_shelf_checkbox)
+        self.enable_detection_checkbox.stateChanged.connect(self.on_detection_toggled)
+        person_layout.addWidget(self.enable_detection_checkbox)
 
-        # Выбор метода обнаружения
-        method_layout = QHBoxLayout()
-        method_label = QLabel("Метод:")
-        method_label.setFixedWidth(80)
-        self.shelf_method_combo = QComboBox()
-        self.shelf_method_combo.addItems(["Гибридный", "По линиям", "По контурам", "По сетке"])
-        method_layout.addWidget(method_label)
-        method_layout.addWidget(self.shelf_method_combo)
-        shelf_content_layout.addLayout(method_layout)
+        layout.addWidget(person_group)
 
-        # Ручные настройки
-        manual_frame = QFrame()
-        manual_layout = QVBoxLayout(manual_frame)
+        # Группа для поиска ячеек
+        shelf_group = QGroupBox()
+        shelf_group.setFixedHeight(40)
+        shelf_group.setStyleSheet("""
+            QGroupBox {
+                background-color: #f5f5f5;
+                border: 1px solid #ccc;
+                border-radius: 5px;
+                margin-top: 1px;
+                padding-top: 5px;
+                font-weight: bold;
+                font-size: 12px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                top: -3px;
+                padding: 0 3px 0 3px;
+            }
+        """)
 
-        # Разделитель
-        separator = QLabel("Ручная настройка")
-        separator.setStyleSheet("font-weight: bold; margin-top: 5px;")
-        manual_layout.addWidget(separator)
+        shelf_layout = QVBoxLayout(shelf_group)
+        shelf_layout.setContentsMargins(10, 5, 10, 5)
+        shelf_layout.setSpacing(0)
 
-        # Количество полок
-        shelves_count_layout = QHBoxLayout()
-        shelves_count_label = QLabel("Количество полок (0=авто):")
-        self.shelves_count_spin = QSpinBox()
-        self.shelves_count_spin.setRange(0, 20)
-        self.shelves_count_spin.setValue(0)
-        shelves_count_layout.addWidget(shelves_count_label)
-        shelves_count_layout.addWidget(self.shelves_count_spin)
-        manual_layout.addLayout(shelves_count_layout)
+        self.enable_shelf_checkbox = QCheckBox("Поиск ячеек")
+        self.enable_shelf_checkbox.setStyleSheet("""
+            QCheckBox {
+                background-color: transparent;
+                color: #333;
+                spacing: 8px;
+                margin: 0px;
+                padding: 0px;
+                font-weight: bold;
+                font-size: 12px;
+            }
+            QCheckBox::indicator {
+                background-color: white;
+                border: 1px solid #999;
+                border-radius: 3px;
+                width: 14px;
+                height: 14px;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #4CAF50;
+                border-color: #4CAF50;
+            }
+        """)
+        self.enable_shelf_checkbox.stateChanged.connect(self.on_shelf_detection_toggled)
+        shelf_layout.addWidget(self.enable_shelf_checkbox)
 
-        # Количество ячеек на полке
-        cells_count_layout = QHBoxLayout()
-        cells_count_label = QLabel("Ячеек на полке (0=авто):")
-        self.cells_per_shelf_spin = QSpinBox()
-        self.cells_per_shelf_spin.setRange(0, 20)
-        self.cells_per_shelf_spin.setValue(0)
-        cells_count_layout.addWidget(cells_count_label)
-        cells_count_layout.addWidget(self.cells_per_shelf_spin)
-        manual_layout.addLayout(cells_count_layout)
-
-        # Кнопка применения ручных настроек
-        apply_manual_btn = QPushButton("Применить ручные настройки")
-        apply_manual_btn.clicked.connect(self.on_manual_settings_applied)
-        manual_layout.addWidget(apply_manual_btn)
-
-        shelf_content_layout.addWidget(manual_frame)
-        
-        # Функция сворачивания
-        def toggle_shelf_content():
-            is_checked = shelf_header_btn.isChecked()
-            shelf_content_frame.setVisible(is_checked)
-            if is_checked:
-                self.shelf_arrow_label.setText("◹")
-            else:
-                self.shelf_arrow_label.setText("◿")
-        
-        shelf_header_btn.clicked.connect(toggle_shelf_content)
-        
-        # Добавляем в основной layout
-        layout.addWidget(shelf_header_btn)
-        layout.addWidget(shelf_content_frame)
-        
-        # Подключаем сигналы
-        self.enable_shelf_checkbox.clicked.connect(self.on_shelf_detection_toggled)
-        self.shelf_method_combo.currentTextChanged.connect(self.on_shelf_method_changed)
-        # Функция сворачивания для второго блока
-        def toggle_person_content():
-            is_checked = person_header_btn.isChecked()
-            person_content_frame.setVisible(is_checked)
-            if is_checked:
-                self.person_arrow_label.setText("◹")
-            else:
-                self.person_arrow_label.setText("◿")
-
-        person_header_btn.clicked.connect(toggle_person_content)
-
-        # Добавляем в основной layout
-        layout.addWidget(person_header_btn)
-        layout.addWidget(person_content_frame)
-
-        # Подключаем сигналы
-        self.enable_detection_checkbox.clicked.connect(self.on_detection_toggled)
-        self.threshold_slider.valueChanged.connect(self.on_threshold_changed)
+        layout.addWidget(shelf_group)
         
         # Функция сворачивания/разворачивания
         def toggle_content():
@@ -340,11 +262,7 @@ class EffectsWidget(QWidget):
         
         layout.addWidget(header_btn)
         layout.addWidget(content_frame)
-        
-        # Кнопка сброса (остается всегда видимой)
-        reset_btn = QPushButton("Сбросить все эффекты")
-        reset_btn.clicked.connect(self.reset_effects)
-        layout.addWidget(reset_btn)
+
         
         layout.addStretch()
         
@@ -362,19 +280,10 @@ class EffectsWidget(QWidget):
                 "shelves_count": self.shelves_count_spin.value(),
                 "cells_per_shelf": self.cells_per_shelf_spin.value()
             })
-    def on_shelf_detection_toggled(self, checked):
-        """Включение/выключение обнаружения полок"""
-        method_map = {
-            "Гибридный": "hybrid",
-            "По линиям": "line", 
-            "По контурам": "contour",
-            "По сетке": "grid"
-        }
-        method = method_map.get(self.shelf_method_combo.currentText(), "hybrid")
-        self.effect_applied.emit("detect_shelves", {
-            "enabled": checked,
-            "method": method
-        })
+    def on_shelf_detection_toggled(self, state):
+        """Включение/выключение обнаружения ячеек"""
+        enabled = state == Qt.CheckState.Checked.value
+        self.effect_applied.emit("detect_shelves", {"enabled": enabled, "method": "yolo"})
     
     def on_shelf_method_changed(self, method_text):
         """Изменение метода обнаружения"""
@@ -411,15 +320,16 @@ class EffectsWidget(QWidget):
         contrast_value = self.contrast_slider.value()
         sharpness_value = self.sharpness_slider.value()
         
-        # Преобразуем контрастность из -100..100 в коэффициент 0.5..2.0
-        alpha = 0.5 + (contrast_value + 100) / 200 * 1.5
-        
         # Если все параметры равны 0, сбрасываем эффекты
         if brightness_value == 0 and contrast_value == 0 and sharpness_value == 0:
             self.effect_reset.emit()
             return
         
-        # Отправляем один сигнал со всеми параметрами
+        # Преобразуем контрастность в коэффициент
+        # contrast_value от -100 до 100 -> alpha от 0.5 до 2.0
+        alpha = 0.5 + (contrast_value + 100) / 200 * 1.5
+        
+        # Отправляем сигнал с параметрами
         self.effect_applied.emit("all", {
             "brightness": brightness_value,
             "contrast": alpha,
@@ -433,13 +343,10 @@ class EffectsWidget(QWidget):
         self.sharpness_slider.setValue(0)
         self.effect_reset.emit()
         
-    def on_detection_toggled(self, checked):
-        """Включение/выключение поиска человека"""
-        if checked:
-            threshold = self.threshold_slider.value() / 100.0
-            self.effect_applied.emit("detect_person", {"enabled": True, "threshold": threshold})
-        else:
-            self.effect_applied.emit("detect_person", {"enabled": False})
+    def on_detection_toggled(self, state):
+        """Включение/выключение поиска людей"""
+        enabled = state == Qt.CheckState.Checked.value
+        self.effect_applied.emit("detect_person", {"enabled": enabled, "threshold": 0.5})
 
     def on_threshold_changed(self, value):
         """Изменение порога уверенности"""
