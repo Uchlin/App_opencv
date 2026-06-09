@@ -1,5 +1,5 @@
 # widgets/effects_widget.py
-from PyQt6.QtWidgets import QFrame, QWidget, QVBoxLayout, QLabel, QPushButton, QGroupBox, QSlider, QHBoxLayout
+from PyQt6.QtWidgets import QComboBox, QFrame, QSpinBox, QWidget, QVBoxLayout, QLabel, QPushButton, QGroupBox, QSlider, QHBoxLayout
 from PyQt6.QtCore import Qt, pyqtSignal
 
 class EffectsWidget(QWidget):
@@ -188,7 +188,126 @@ class EffectsWidget(QWidget):
         threshold_layout.addWidget(self.threshold_slider, 1)
         threshold_layout.addWidget(self.threshold_value_label)
         person_content_layout.addLayout(threshold_layout)
+        
+        # Третий заголовок для обнаружения полок
+        shelf_header_btn = QPushButton()
+        shelf_header_btn.setCheckable(True)
+        shelf_header_btn.setChecked(False)
+        shelf_header_btn.setFlat(True)
+        shelf_header_btn.setStyleSheet("""
+            QPushButton {
+                text-align: left;
+                font-weight: bold;
+                padding: 8px;
+                background-color: #f5f5f5;
+                border: 1px solid #ccc;
+                border-radius: 5px;
+                margin-top: 5px;
+            }
+            QPushButton:hover {
+                background-color: #e5e5e5;
+            }
+            QPushButton:checked {
+                background-color: #e5e5e5;
+            }
+        """)
+        
+        shelf_btn_layout = QHBoxLayout(shelf_header_btn)
+        shelf_btn_layout.setContentsMargins(10, 5, 10, 5)
+        
+        shelf_title_text = QLabel("Обнаружение полок")
+        shelf_title_text.setStyleSheet("background-color: transparent; font-weight: bold;")
+        
+        self.shelf_arrow_label = QLabel("◿")
+        self.shelf_arrow_label.setStyleSheet("background-color: transparent; font-weight: bold; font-size: 14px;")
+        
+        shelf_btn_layout.addWidget(shelf_title_text)
+        shelf_btn_layout.addStretch()
+        shelf_btn_layout.addWidget(self.shelf_arrow_label)
+        
+        # Контейнер для содержимого обнаружения полок
+        shelf_content_frame = QFrame()
+        shelf_content_frame.setVisible(False)
+        
+        shelf_content_layout = QVBoxLayout(shelf_content_frame)
+        shelf_content_layout.setContentsMargins(10, 10, 0, 10)
+        shelf_content_layout.setSpacing(8)
+        
+        # Кнопка включения/выключения поиска полок
+        self.enable_shelf_checkbox = QPushButton("Включить поиск полок")
+        self.enable_shelf_checkbox.setCheckable(True)
+        self.enable_shelf_checkbox.setStyleSheet("""
+            QPushButton:checked {
+                background-color: #4CAF50;
+                color: white;
+            }
+        """)
+        shelf_content_layout.addWidget(self.enable_shelf_checkbox)
 
+        # Выбор метода обнаружения
+        method_layout = QHBoxLayout()
+        method_label = QLabel("Метод:")
+        method_label.setFixedWidth(80)
+        self.shelf_method_combo = QComboBox()
+        self.shelf_method_combo.addItems(["Гибридный", "По линиям", "По контурам", "По сетке"])
+        method_layout.addWidget(method_label)
+        method_layout.addWidget(self.shelf_method_combo)
+        shelf_content_layout.addLayout(method_layout)
+
+        # Ручные настройки
+        manual_frame = QFrame()
+        manual_layout = QVBoxLayout(manual_frame)
+
+        # Разделитель
+        separator = QLabel("Ручная настройка")
+        separator.setStyleSheet("font-weight: bold; margin-top: 5px;")
+        manual_layout.addWidget(separator)
+
+        # Количество полок
+        shelves_count_layout = QHBoxLayout()
+        shelves_count_label = QLabel("Количество полок (0=авто):")
+        self.shelves_count_spin = QSpinBox()
+        self.shelves_count_spin.setRange(0, 20)
+        self.shelves_count_spin.setValue(0)
+        shelves_count_layout.addWidget(shelves_count_label)
+        shelves_count_layout.addWidget(self.shelves_count_spin)
+        manual_layout.addLayout(shelves_count_layout)
+
+        # Количество ячеек на полке
+        cells_count_layout = QHBoxLayout()
+        cells_count_label = QLabel("Ячеек на полке (0=авто):")
+        self.cells_per_shelf_spin = QSpinBox()
+        self.cells_per_shelf_spin.setRange(0, 20)
+        self.cells_per_shelf_spin.setValue(0)
+        cells_count_layout.addWidget(cells_count_label)
+        cells_count_layout.addWidget(self.cells_per_shelf_spin)
+        manual_layout.addLayout(cells_count_layout)
+
+        # Кнопка применения ручных настроек
+        apply_manual_btn = QPushButton("Применить ручные настройки")
+        apply_manual_btn.clicked.connect(self.on_manual_settings_applied)
+        manual_layout.addWidget(apply_manual_btn)
+
+        shelf_content_layout.addWidget(manual_frame)
+        
+        # Функция сворачивания
+        def toggle_shelf_content():
+            is_checked = shelf_header_btn.isChecked()
+            shelf_content_frame.setVisible(is_checked)
+            if is_checked:
+                self.shelf_arrow_label.setText("◹")
+            else:
+                self.shelf_arrow_label.setText("◿")
+        
+        shelf_header_btn.clicked.connect(toggle_shelf_content)
+        
+        # Добавляем в основной layout
+        layout.addWidget(shelf_header_btn)
+        layout.addWidget(shelf_content_frame)
+        
+        # Подключаем сигналы
+        self.enable_shelf_checkbox.clicked.connect(self.on_shelf_detection_toggled)
+        self.shelf_method_combo.currentTextChanged.connect(self.on_shelf_method_changed)
         # Функция сворачивания для второго блока
         def toggle_person_content():
             is_checked = person_header_btn.isChecked()
@@ -235,7 +354,42 @@ class EffectsWidget(QWidget):
         self.brightness_slider.valueChanged.connect(self.on_brightness_changed)
         self.contrast_slider.valueChanged.connect(self.on_contrast_changed)
         self.sharpness_slider.valueChanged.connect(self.on_sharpness_changed)
-        
+    def on_manual_settings_applied(self):
+        """Применение ручных настроек"""
+        if self.enable_shelf_checkbox.isChecked():
+            self.effect_applied.emit("detect_shelves_manual", {
+                "enabled": True,
+                "shelves_count": self.shelves_count_spin.value(),
+                "cells_per_shelf": self.cells_per_shelf_spin.value()
+            })
+    def on_shelf_detection_toggled(self, checked):
+        """Включение/выключение обнаружения полок"""
+        method_map = {
+            "Гибридный": "hybrid",
+            "По линиям": "line", 
+            "По контурам": "contour",
+            "По сетке": "grid"
+        }
+        method = method_map.get(self.shelf_method_combo.currentText(), "hybrid")
+        self.effect_applied.emit("detect_shelves", {
+            "enabled": checked,
+            "method": method
+        })
+    
+    def on_shelf_method_changed(self, method_text):
+        """Изменение метода обнаружения"""
+        if self.enable_shelf_checkbox.isChecked():
+            method_map = {
+                "Гибридный": "hybrid",
+                "По линиям": "line",
+                "По контурам": "contour", 
+                "По сетке": "grid"
+            }
+            method = method_map.get(method_text, "hybrid")
+            self.effect_applied.emit("detect_shelves", {
+                "enabled": True,
+                "method": method
+            })
     def on_brightness_changed(self, value):
         """Обработчик изменения яркости"""
         self.brightness_value_label.setText(str(value))

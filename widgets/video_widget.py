@@ -1,9 +1,12 @@
 # video_widget.py (обновленная версия)
+from typing import List
+
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QSlider, QHBoxLayout, QPushButton
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap
 import cv2
 from image_thread import ImageLoaderThread
+from shelf_detector import DetectionMethod, Shelf, ShelfCell, ShelfDetectionThread, ShelfDetector
 from video_thread import VideoPlayerThread
 from camera_thread import CameraThread
 from opencv_processor import OpenCVProcessor
@@ -15,6 +18,7 @@ class VideoWidget(QWidget):
     # Добавляем новые сигналы
     camera_mode_changed = pyqtSignal(bool)  # True = камера, False = видео
     person_detected_signal = pyqtSignal(int, list)  # количество людей, список позиций
+    shelves_detected_signal = pyqtSignal(list, list)  # полки, ячейки
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("VideoWidget")
@@ -45,6 +49,7 @@ class VideoWidget(QWidget):
         self.last_detection_time = 0
         self.detection_cooldown = 2000  # миллисекунды между записями
         self.current_frame = None # Кадр с нарисованными рамкам
+        self.original_frame = None
         self.frame_counter = 0  # ДОБАВЬТЕ ДЛЯ ОПТИМИЗАЦИИ
         self.detection_interval = 3  # Каждый N кадр
          # Подключаем сигнал обнаружения
@@ -53,6 +58,17 @@ class VideoWidget(QWidget):
         # Создаем поток без аргументов
         self.detection_thread = DetectionThread()  # УБРАЛИ АРГУМЕНТЫ
         self.detection_thread.detection_ready.connect(self.on_detection_ready)
+        # Добавляем детектор полок
+        self.shelf_detector = ShelfDetector()
+        self.shelf_detection_enabled = False
+        self.shelf_detection_method = DetectionMethod.HYBRID
+        self.shelf_detection_interval = 5  # Каждый 5-й кадр
+        self.current_shelves = []
+        self.current_cells = []
+        
+        # Создаем поток для обнаружения полок
+        self.shelf_detection_thread = ShelfDetectionThread()
+        self.shelf_detection_thread.detection_ready.connect(self.on_shelves_detected)
     def setup_ui(self):
         """Создаёт интерфейс виджета"""
         layout = QVBoxLayout()
@@ -386,62 +402,152 @@ class VideoWidget(QWidget):
             
             # Отправляем сигнал в main для записи в таблицу
             self.person_detected_signal.emit(count, stats["positions"])
+    def enable_shelf_detection(self, enabled: bool, method: str = "hybrid"):
+        """Включает/выключает обнаружение полок"""
+        self.shelf_detection_enabled = enabled
+        if enabled:
+            # Устанавливаем метод обнаружения
+            method_map = {
+                "contour": DetectionMethod.CONTOUR,
+                "line": DetectionMethod.LINE,
+                "grid": DetectionMethod.GRID,
+                "hybrid": DetectionMethod.HYBRID
+            }
+            self.shelf_detection_method = method_map.get(method, DetectionMethod.HYBRID)
+            # Принудительно запускаем детекцию на текущем кадре
+            self.force_shelf_detection()
+        else:
+            self.current_shelves = []
+            self.current_cells = []
+            # Перерисовываем кадр без рамок
+            self.redisplay_current_frame()
+    def redisplay_current_frame(self):
+        """Перерисовывает текущий кадр с текущими детекциями"""
+        if self.current_frame is not None:
+            # Конвертируем numpy массив в QImage
+            qt_image = self.processor.numpy_to_qimage(self.current_frame)
+            if qt_image and not qt_image.isNull():
+                self.update_display_frame_with_detections(qt_image)
+    def force_shelf_detection(self):
+        """Принудительно запускает обнаружение полок на текущем кадре"""
+        if self.current_frame is not None and self.shelf_detection_enabled:
+            # Используем текущий кадр
+            small_frame = cv2.resize(self.current_frame, (640, 480))
+            self.shelf_detection_thread.set_frame(small_frame, self.shelf_detection_method)
+            self.shelf_detection_thread.start()
+    def on_shelves_detected(self, shelves: List[Shelf], cells: List[ShelfCell]):
+        """Обработка обнаруженных полок и ячеек"""
+        self.current_shelves = shelves
+        self.current_cells = cells
+        
+        # Перерисовываем текущий кадр с новыми детекциями
+        self.redisplay_current_frame()
+        
+        # Если включено обнаружение людей, обновляем занятость ячеек
+        if hasattr(self, 'person_detection_enabled') and self.person_detection_enabled:
+            # Здесь нужно получить текущие детекции людей
+            pass
+        
+        # Отправляем сигнал в main
+        self.shelves_detected_signal.emit(shelves, cells)
+        
+        print(f"[DEBUG] Обнаружено {len(shelves)} полок и {len(cells)} ячеек")
+
+    def update_display_frame_with_detections(self, qt_image):
+        """Обновляет отображение кадра с детекциями"""
+        if qt_image.isNull():
+            return
+        
+        frame = self.processor.qimage_to_numpy(qt_image)
+        if frame is None:
+            return
+        
+        # Рисуем обнаружения
+        if self.person_detection_enabled and hasattr(self, 'current_detections'):
+            frame = self.person_detector.draw_detections(frame, self.current_detections)
+        
+        if self.shelf_detection_enabled and (self.current_shelves or self.current_cells):
+            frame = self.shelf_detector.draw_detections(
+                frame, 
+                shelves=self.current_shelves,
+                cells=self.current_cells,
+                draw_shelves=True,
+                draw_cells=True,
+                draw_grid=True
+            )
+        
+        # Конвертируем обратно в QImage
+        result_image = self.processor.numpy_to_qimage(frame)
+        if result_image and not result_image.isNull():
+            pixmap = QPixmap.fromImage(result_image)
+            if not pixmap.isNull():
+                scaled_pixmap = pixmap.scaled(
+                    self.video_label.width(),
+                    self.video_label.height(),
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation
+                )
+                self.video_label.setPixmap(scaled_pixmap)
     def display_frame(self, qt_image):
         """Отображает кадр на QLabel"""
         if not qt_image.isNull() and self.video_label:
             try:
-                # Увеличиваем счетчик кадров
                 self.frame_counter += 1
-                
                 current_frame = None
-                
-                # Если есть активный эффект, обрабатываем кадр
-                if hasattr(self, 'current_operation') and self.current_operation != "none":
-                    frame = self.processor.qimage_to_numpy(qt_image)
-                    if frame is not None:
-                        processed_frame = self.processor.process_frame(
-                            frame, self.current_operation, self.operation_params
-                        )
-                        if processed_frame is not None:
-                            qt_image = self.processor.numpy_to_qimage(processed_frame)
-                            current_frame = processed_frame
-                        else:
-                            current_frame = frame
+                # Сначала получаем кадр из QImage (без эффектов)
+                original_frame = self.processor.qimage_to_numpy(qt_image)
+                # Сохраняем оригинальный кадр (без эффектов и детекций)
+                if original_frame is not None:
+                    self.original_frame = original_frame.copy()
+                # Применяем эффекты
+                if hasattr(self, 'current_operation') and self.current_operation != "none" and original_frame is not None:
+                    processed_frame = self.processor.process_frame(
+                        original_frame, self.current_operation, self.operation_params
+                    )
+                    if processed_frame is not None:
+                        qt_image = self.processor.numpy_to_qimage(processed_frame)
+                        current_frame = processed_frame
                     else:
-                        current_frame = None
+                        current_frame = original_frame
                 else:
-                    # Конвертируем для детектора без эффектов
-                    current_frame = self.processor.qimage_to_numpy(qt_image)
+                    current_frame = original_frame
                 
-                # Сохраняем текущий кадр для on_detection_ready
                 self.current_frame = current_frame
                 
-                # ОБНАРУЖЕНИЕ ЛЮДЕЙ (только каждый N-кадр)
+                # Обнаружение людей (только если нужно и не в режиме принудительного)
                 if (self.person_detection_enabled and 
                     current_frame is not None and 
                     self.frame_counter % self.detection_interval == 0 and
                     not self.detection_thread.isRunning()):
-                    
-                    # Уменьшаем кадр для скорости
                     small_frame = cv2.resize(current_frame, (160, 120))
                     self.detection_thread.set_frame(small_frame, self.detection_threshold)
                     self.detection_thread.start()
                 
-                # Отображаем кадр
-                if qt_image is not None and not qt_image.isNull():
-                    pixmap = QPixmap.fromImage(qt_image)
-                    if not pixmap.isNull():
-                        scaled_pixmap = pixmap.scaled(
-                            self.video_label.width(),
-                            self.video_label.height(),
-                            Qt.AspectRatioMode.KeepAspectRatio,
-                            Qt.TransformationMode.SmoothTransformation
-                        )
-                        self.video_label.setPixmap(scaled_pixmap)
-                        self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    
+                # Обнаружение полок (только если нужно и не в режиме принудительного)
+                if (self.shelf_detection_enabled and 
+                    current_frame is not None and 
+                    self.frame_counter % self.shelf_detection_interval == 0 and
+                    not self.shelf_detection_thread.isRunning()):
+                    small_frame = cv2.resize(current_frame, (640, 480))
+                    self.shelf_detection_thread.set_frame(small_frame, self.shelf_detection_method)
+                    self.shelf_detection_thread.start()
+                
+                # Отображаем кадр с детекциями
+                self.update_display_frame_with_detections(qt_image)
+                
             except Exception as e:
                 print(f"Ошибка отображения кадра: {e}")
+    def enable_shelf_detection_manual(self, enabled: bool, shelves_count: int = 0, cells_per_shelf: int = 0):
+        """Включает ручное обнаружение полок"""
+        self.shelf_detection_enabled = enabled
+        if enabled:
+            self.shelf_detection_method = DetectionMethod.MANUAL
+            self.shelf_detection_thread.set_manual_settings(shelves_count, cells_per_shelf, 0, 0)
+            self.force_shelf_detection()
+        else:
+            self.current_shelves = []
+            self.current_cells = []
+            self.redisplay_current_frame()
     def on_detection_ready(self, detections):
         """Обработка результатов из потока"""
         if detections and self.current_frame is not None:
@@ -544,4 +650,19 @@ class VideoWidget(QWidget):
         # Отключаем эффект
         self.current_operation = "none"
         self.operation_params = {}
+        
+        # Если есть оригинальный кадр, восстанавливаем его
+        if hasattr(self, 'original_frame') and self.original_frame is not None:
+            # Конвертируем оригинальный кадр в QImage
+            qt_image = self.processor.numpy_to_qimage(self.original_frame)
+            if qt_image and not qt_image.isNull():
+                # Обновляем текущий кадр
+                self.current_frame = self.original_frame.copy()
+                # Отображаем кадр с детекциями (если они включены)
+                self.update_display_frame_with_detections(qt_image)
+        elif self.current_frame is not None:
+            # Если оригинального кадра нет, используем текущий
+            qt_image = self.processor.numpy_to_qimage(self.current_frame)
+            if qt_image and not qt_image.isNull():
+                self.update_display_frame_with_detections(qt_image)
     

@@ -66,6 +66,7 @@ class MainWindow(QWidget):
         self.video_widget = VideoWidget()
         # Подключаем сигнал обнаружения людей
         self.video_widget.person_detected_signal.connect(self.on_person_detected)
+        self.video_widget.shelves_detected_signal.connect(self.on_shelves_detected)
         right_layout.addWidget(self.video_widget)
         # Виджет таблицы 
         self.info_table = InfoTableWidget()
@@ -123,6 +124,24 @@ class MainWindow(QWidget):
         
         # Обновляем строку состояния
         self.last_action_label.setText(f"Последнее действие: {action_name}")    
+    def on_shelves_detected(self, shelves, cells):
+        """Обработчик обнаружения полок и ячеек"""
+        total_cells = len(cells)
+        total_shelves = len(shelves)
+        
+        if total_shelves > 0:
+            action_name = f"Обнаружено {total_shelves} полок"
+            details = f"Всего ячеек: {total_cells}"
+            
+            # Добавляем детали о каждой полке
+            shelf_details = []
+            for shelf in shelves:
+                shelf_details.append(f"Полка {shelf.shelf_id}: {len(shelf.cells)} ячеек")
+            if shelf_details:
+                details += f" ({', '.join(shelf_details)})"
+            
+            self.info_table.add_row("Детекция", action_name, details)
+            self.last_action_label.setText(f"Последнее действие: {action_name}")
     def apply_styles(self):
         self.setStyleSheet("""
             QWidget {
@@ -260,16 +279,25 @@ class MainWindow(QWidget):
                 enabled = params.get("enabled", False)
                 threshold = params.get("threshold", 0.5)
                 self.video_widget.enable_person_detection(enabled, threshold)
+            elif effect_name == "detect_shelves":
+                enabled = params.get("enabled", False)
+                method = params.get("method", "hybrid")
+                self.video_widget.enable_shelf_detection(enabled, method)
+            elif effect_name == "detect_shelves_manual":
+                enabled = params.get("enabled", False)
+                shelves_count = params.get("shelves_count", 0)
+                cells_per_shelf = params.get("cells_per_shelf", 0)
+                self.video_widget.enable_shelf_detection_manual(
+                    enabled, shelves_count, cells_per_shelf
+                )
                 
                 if enabled:
-                    self.info_table.add_row("Детекция", "Поиск людей включён", f"Порог: {threshold}")
-                    self.last_action_label.setText(f"Последнее действие: Включён поиск людей (порог {threshold})")
+                    self.info_table.add_row("Детекция", "Поиск полок (ручной)", 
+                                        f"Полок: {shelves_count if shelves_count>0 else 'авто'}, Ячеек: {cells_per_shelf if cells_per_shelf>0 else 'авто'}")
+                    self.last_action_label.setText(f"Последнее действие: Включён ручной поиск полок")
                 else:
-                    self.info_table.add_row("Детекция", "Поиск людей выключен", "")
-                    self.last_action_label.setText("Последнее действие: Выключен поиск людей")
-            else:
-                self.video_widget.apply_effect(effect_name, params)
-                self.last_action_label.setText(f"Последнее действие: Применён эффект '{effect_name}'")
+                    self.info_table.add_row("Детекция", "Поиск полок выключен", "")
+                    self.last_action_label.setText("Последнее действие: Выключен поиск полок")
 
     def on_effect_reset(self):
         """Сбрасывает эффекты"""
