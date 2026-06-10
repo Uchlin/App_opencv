@@ -221,7 +221,7 @@ class EffectsWidget(QWidget):
         shelf_layout.setContentsMargins(10, 5, 10, 5)
         shelf_layout.setSpacing(0)
 
-        self.enable_shelf_checkbox = QCheckBox("Поиск ячеек")
+        self.enable_shelf_checkbox = QCheckBox("Включить поиск ячеек")
         self.enable_shelf_checkbox.setStyleSheet("""
             QCheckBox {
                 background-color: transparent;
@@ -249,6 +249,204 @@ class EffectsWidget(QWidget):
 
         layout.addWidget(shelf_group)
         
+        # Группа для поиска возгораний (компактная версия)
+        fire_group = QGroupBox()
+        fire_group.setFixedHeight(40)
+        fire_group.setStyleSheet("""
+            QGroupBox {
+                background-color: #f5f5f5;
+                border: 1px solid #ccc;
+                border-radius: 5px;
+                margin-top: 1px;
+                padding-top: 5px;
+                font-weight: bold;
+                font-size: 12px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                top: -3px;
+                padding: 0 3px 0 3px;
+            }
+        """)
+
+        fire_layout = QVBoxLayout(fire_group)
+        fire_layout.setContentsMargins(10, 5, 10, 5)
+        fire_layout.setSpacing(0)
+
+        self.enable_fire_checkbox = QCheckBox("Включить поиск возгораний")
+        self.enable_fire_checkbox.setStyleSheet("""
+            QCheckBox {
+                background-color: transparent;
+                color: #333;
+                spacing: 8px;
+                margin: 0px;
+                padding: 0px;
+                font-weight: bold;
+                font-size: 12px;
+            }
+            QCheckBox::indicator {
+                background-color: white;
+                border: 1px solid #999;
+                border-radius: 3px;
+                width: 14px;
+                height: 14px;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #4CAF50;
+                border-color: #4CAF50;
+            }
+        """)
+        self.enable_fire_checkbox.stateChanged.connect(self.on_fire_detection_toggled)
+        fire_layout.addWidget(self.enable_fire_checkbox)
+
+        layout.addWidget(fire_group)
+        # Группа для настройки интервала записи (с ручным вводом, без кнопок)
+        interval_header_btn = QPushButton()
+        interval_header_btn.setCheckable(True)
+        interval_header_btn.setChecked(False)
+        interval_header_btn.setFlat(True)
+        interval_header_btn.setStyleSheet("""
+            QPushButton {
+                text-align: left;
+                font-weight: bold;
+                padding: 8px;
+                background-color: #f5f5f5;
+                border: 1px solid #ccc;
+                border-radius: 5px;
+                margin-top: 5px;
+            }
+            QPushButton:hover {
+                background-color: #e5e5e5;
+            }
+            QPushButton:checked {
+                background-color: #e5e5e5;
+            }
+        """)
+
+        # Layout для кнопки
+        interval_btn_layout = QHBoxLayout(interval_header_btn)
+        interval_btn_layout.setContentsMargins(10, 5, 10, 5)
+
+        # Текст слева
+        interval_title_text = QLabel("Настройки интервала записей")
+        interval_title_text.setStyleSheet("background-color: transparent; font-weight: bold;")
+
+        # Стрелка
+        self.interval_arrow_label = QLabel("◿")
+        self.interval_arrow_label.setStyleSheet("background-color: transparent; font-weight: bold; font-size: 14px;")
+
+        interval_btn_layout.addWidget(interval_title_text)
+        interval_btn_layout.addStretch()
+        interval_btn_layout.addWidget(self.interval_arrow_label)
+
+        # Контейнер для содержимого интервала
+        interval_content_frame = QFrame()
+        interval_content_frame.setVisible(False)
+
+        interval_content_layout = QVBoxLayout(interval_content_frame)
+        interval_content_layout.setContentsMargins(10, 10, 0, 10)
+        interval_content_layout.setSpacing(8)
+
+        # Чекбокс включения ограничения
+        self.enable_interval_checkbox = QCheckBox("Ограничить частоту записей")
+        self.enable_interval_checkbox.setChecked(True)
+        self.enable_interval_checkbox.setStyleSheet("""
+            QCheckBox {
+                background-color: transparent;
+                color: #333;
+                spacing: 8px;
+                font-weight: bold;
+                font-size: 12px;
+            }
+            QCheckBox::indicator {
+                background-color: white;
+                border: 1px solid #999;
+                border-radius: 3px;
+                width: 14px;
+                height: 14px;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #4CAF50;
+                border-color: #4CAF50;
+            }
+        """)
+        self.enable_interval_checkbox.stateChanged.connect(self.on_interval_enabled_toggled)
+        interval_content_layout.addWidget(self.enable_interval_checkbox)
+
+        # Строка с вводом значения
+        input_layout = QHBoxLayout()
+        input_layout.addWidget(QLabel("Интервал:"))
+
+        self.interval_spinbox = QSpinBox()
+        self.interval_spinbox.setRange(1, 600)
+        self.interval_spinbox.setValue(2)
+        self.interval_spinbox.setSuffix(" сек")
+        self.interval_spinbox.valueChanged.connect(self.on_interval_value_changed)
+        input_layout.addWidget(self.interval_spinbox)
+        input_layout.addStretch()
+
+        interval_content_layout.addLayout(input_layout)
+
+        # Слайдер
+        self.interval_slider = QSlider(Qt.Orientation.Horizontal)
+        self.interval_slider.setRange(1, 600)
+        self.interval_slider.setValue(2)
+        self.interval_slider.valueChanged.connect(self.on_interval_slider_changed)
+        interval_content_layout.addWidget(self.interval_slider)
+
+        # Кнопки быстрого выбора интервала
+        buttons_layout = QHBoxLayout()
+        buttons_layout.setSpacing(5)
+        
+        btn_30sec = QPushButton("30 сек.")
+        btn_30sec.setFixedHeight(25)
+        btn_30sec.setStyleSheet("padding: 2px; margin: 0px;")
+        btn_30sec.clicked.connect(lambda: self.interval_spinbox.setValue(30))
+        
+        btn_1min = QPushButton("1 мин.")
+        btn_1min.setFixedHeight(25)
+        btn_1min.setStyleSheet("padding: 2px; margin: 0px;")
+        btn_1min.clicked.connect(lambda: self.interval_spinbox.setValue(60))
+
+        btn_2min = QPushButton("2 мин.")
+        btn_2min.setFixedHeight(25)
+        btn_2min.setStyleSheet("padding: 2px; margin: 0px;")
+        btn_2min.clicked.connect(lambda: self.interval_spinbox.setValue(120))
+
+        btn_5min = QPushButton("5 мин.")
+        btn_5min.setFixedHeight(25)
+        btn_5min.setStyleSheet("padding: 2px; margin: 0px;")
+        btn_5min.clicked.connect(lambda: self.interval_spinbox.setValue(300))
+
+        btn_10min = QPushButton("10 мин.")
+        btn_10min.setFixedHeight(25)
+        btn_10min.setStyleSheet("padding: 2px; margin: 0px;")
+        btn_10min.clicked.connect(lambda: self.interval_spinbox.setValue(600))
+
+        buttons_layout.addWidget(btn_30sec)
+        buttons_layout.addWidget(btn_1min)
+        buttons_layout.addWidget(btn_2min)
+        buttons_layout.addWidget(btn_5min)
+        buttons_layout.addWidget(btn_10min)
+        buttons_layout.addStretch()
+
+        interval_content_layout.addLayout(buttons_layout)
+
+        # Функция сворачивания/разворачивания
+        def toggle_interval_content():
+            is_checked = interval_header_btn.isChecked()
+            interval_content_frame.setVisible(is_checked)
+            if is_checked:
+                self.interval_arrow_label.setText("◹")
+            else:
+                self.interval_arrow_label.setText("◿")
+
+        interval_header_btn.clicked.connect(toggle_interval_content)
+
+        # Добавляем в layout
+        layout.addWidget(interval_header_btn)
+        layout.addWidget(interval_content_frame)
         # Функция сворачивания/разворачивания
         def toggle_content():
             is_checked = header_btn.isChecked()
@@ -272,6 +470,44 @@ class EffectsWidget(QWidget):
         self.brightness_slider.valueChanged.connect(self.on_brightness_changed)
         self.contrast_slider.valueChanged.connect(self.on_contrast_changed)
         self.sharpness_slider.valueChanged.connect(self.on_sharpness_changed)
+    def on_interval_enabled_toggled(self, state):
+        """Включение/выключение ограничения записей"""
+        enabled = state == Qt.CheckState.Checked.value
+        interval = self.interval_spinbox.value() if enabled else 0
+        self.effect_applied.emit("set_detection_interval", {"enabled": enabled, "interval": interval})
+
+    def on_interval_value_changed(self, value):
+        """Изменение значения в spinbox"""
+        # Обновляем слайдер
+        self.interval_slider.setValue(value)
+        # Отправляем сигнал
+        if self.enable_interval_checkbox.isChecked():
+            self.effect_applied.emit("set_detection_interval", {
+                "enabled": True, 
+                "interval": value
+            })
+
+    def on_interval_slider_changed(self, value):
+        """Изменение значения слайдера"""
+        # Обновляем spinbox
+        self.interval_spinbox.setValue(value)
+    def on_fire_detection_toggled(self, state):
+        """Включение/выключение поиска возгораний"""
+        enabled = state == Qt.CheckState.Checked.value
+        self.effect_applied.emit("detect_fire", {
+            "enabled": enabled,
+            "detect_smoke": self.detect_smoke_checkbox.isChecked(),
+            "use_motion": self.use_motion_checkbox.isChecked()
+        })
+
+    def on_fire_detection_toggled(self, state):
+        """Включение/выключение поиска возгораний"""
+        enabled = state == Qt.CheckState.Checked.value
+        self.effect_applied.emit("detect_fire", {
+            "enabled": enabled,
+            "detect_smoke": True,  # Дым ищем всегда
+            "use_motion": False     # Движение отключаем для производительности
+        })
     def on_manual_settings_applied(self):
         """Применение ручных настроек"""
         if self.enable_shelf_checkbox.isChecked():

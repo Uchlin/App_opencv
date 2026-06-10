@@ -67,30 +67,31 @@ class MainWindow(QWidget):
         # Подключаем сигнал обнаружения людей
         self.video_widget.person_detected_signal.connect(self.on_person_detected)
         self.video_widget.shelves_detected_signal.connect(self.on_shelves_detected)
+        self.video_widget.fire_detected_signal.connect(self.on_fire_detected)
         right_layout.addWidget(self.video_widget)
         # Виджет таблицы 
         self.info_table = InfoTableWidget()
-        self.info_table.setMaximumHeight(200) # высота
+        # self.info_table.setMaximumHeight(200) # высота
         self.info_table.row_selected.connect(self.on_table_row_selected)
         right_layout.addWidget(self.info_table)
         # Информационная панель внизу
-        info_widget = QWidget()
-        info_layout = QVBoxLayout(info_widget)
+        # info_widget = QWidget()
+        # info_layout = QVBoxLayout(info_widget)
         
-        self.last_action_label = QLabel("Последнее действие: -")
-        self.last_action_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.last_action_label.setStyleSheet("""
-            QLabel {
-                font-size: 14px;
-                padding: 10px;
-                color: #666;
-                background-color: #f5f5f5;
-                border-top: 1px solid #ddd;
-            }
-        """)
+        # self.last_action_label = QLabel("Последнее действие: -")
+        # self.last_action_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # self.last_action_label.setStyleSheet("""
+        #     QLabel {
+        #         font-size: 14px;
+        #         padding: 10px;
+        #         color: #666;
+        #         background-color: #f5f5f5;
+        #         border-top: 1px solid #ddd;
+        #     }
+        # """)
         
-        info_layout.addWidget(self.last_action_label)
-        right_layout.addWidget(info_widget)
+        # info_layout.addWidget(self.last_action_label)
+        # right_layout.addWidget(info_widget)
         
         content_layout.addWidget(right_widget)  # Добавляем правую часть
         main_layout.addLayout(content_layout)   # Добавляем горизонтальный layout
@@ -287,15 +288,47 @@ class MainWindow(QWidget):
                 self.video_widget.enable_shelf_detection_manual(
                     enabled, shelves_count, cells_per_shelf
                 )
+            elif effect_name == "detect_fire":
+                enabled = params.get("enabled", False)
+                detect_smoke = params.get("detect_smoke", True)
+                use_motion = params.get("use_motion", False)
+                self.video_widget.enable_fire_detection(enabled, detect_smoke, use_motion)
                 
                 if enabled:
-                    self.info_table.add_row("Детекция", "Поиск полок (ручной)", 
-                                        f"Полок: {shelves_count if shelves_count>0 else 'авто'}, Ячеек: {cells_per_shelf if cells_per_shelf>0 else 'авто'}")
-                    self.last_action_label.setText(f"Последнее действие: Включён ручной поиск полок")
+                    self.info_table.add_row("Детекция", "Поиск возгораний включен", 
+                                        f"Дым: {'да' if detect_smoke else 'нет'}, Движение: {'да' if use_motion else 'нет'}")
+                    self.last_action_label.setText("Последнее действие: Включён поиск возгораний")
                 else:
-                    self.info_table.add_row("Детекция", "Поиск полок выключен", "")
-                    self.last_action_label.setText("Последнее действие: Выключен поиск полок")
-
+                    self.info_table.add_row("Детекция", "Поиск возгораний выключен", "")
+                    self.last_action_label.setText("Последнее действие: Выключен поиск возгораний")
+    # Добавьте этот метод в класс MainWindow:
+    def on_fire_detected(self, fires: list, smokes: list):
+        """Обработчик обнаружения возгораний"""
+        from datetime import datetime
+        
+        current_time = datetime.now().strftime("%H:%M:%S")
+        
+        # Обработка огня
+        if fires:
+            for fire in fires:
+                x, y, w, h, _ = fire
+                action_name = "🔥 ВОЗГОРАНИЕ"
+                details = f"Координаты: ({x}, {y}) размер: {w}x{h}"
+                self.info_table.add_row("ОПАСНОСТЬ", action_name, details)
+                self.last_action_label.setText(f"Последнее действие: {action_name} обнаружено!")
+        
+        # Обработка дыма
+        # if smokes and len(smokes) > 0:
+        #     # Объединяем все области дыма в одно сообщение
+        #     smoke_areas = []
+        #     for smoke in smokes:
+        #         x, y, w, h, _ = smoke
+        #         smoke_areas.append(f"({x},{y})")
+            
+        #     action_name = "🌫️ Обнаружен дым"
+        #     details = f"Области: {', '.join(smoke_areas[:3])}"  # Максимум 3 области
+        #     self.info_table.add_row("Детекция", action_name, details)
+        #     self.last_action_label.setText(f"Последнее действие: {action_name}")
     def on_effect_reset(self):
         """Сбрасывает эффекты"""
         if self.video_widget:

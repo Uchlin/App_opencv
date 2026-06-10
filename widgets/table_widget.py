@@ -106,28 +106,12 @@ class InfoTableWidget(QWidget):
         # Подключаем сигнал выбора строки
         self.table.itemSelectionChanged.connect(self.on_selection_changed)
         
-        # Добавляем 5 пустых строк для наглядности
-        self.add_empty_rows(5)
-        
-    def add_empty_rows(self, count=5):
-        """Добавляет пустые строки в таблицу для наглядности"""
-        for _ in range(count):
-            row_position = self.table.rowCount()
-            self.table.insertRow(row_position)
-            
-            # Заполняем пустыми значениями
-            for col in range(4):
-                empty_item = QTableWidgetItem("")
-                empty_item.setFlags(empty_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                if col == 0:
-                    empty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.table.setItem(row_position, col, empty_item)
     
     def add_row(self, action_type, action_name, details=""):
         """Добавляет новую строку в таблицу"""
         from datetime import datetime
         
-        # Если есть пустые строки в конце, удаляем их перед добавлением новой
+        # Удаляем пустые строки
         self.remove_empty_rows()
         
         row_position = self.table.rowCount()
@@ -138,21 +122,24 @@ class InfoTableWidget(QWidget):
         time_item = QTableWidgetItem(current_time)
         time_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        # Тип действия (с цветовой индикацией)
+        # Тип действия
         type_item = QTableWidgetItem(action_type)
         type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        # Устанавливаем цвет для разных типов действий
+        # Цветовая индикация
         if action_type == "Файл":
-            type_item.setBackground(QColor(200, 230, 255))  # светло-голубой
+            type_item.setBackground(QColor(200, 230, 255))
         elif action_type == "Эффект":
-            type_item.setBackground(QColor(200, 255, 200))  # светло-зелёный
+            type_item.setBackground(QColor(200, 255, 200))
         elif action_type == "Камера":
-            type_item.setBackground(QColor(255, 230, 200))  # светло-оранжевый
+            type_item.setBackground(QColor(255, 230, 200))
         elif action_type == "Система":
-            type_item.setBackground(QColor(255, 200, 200))  # светло-красный
+            type_item.setBackground(QColor(255, 200, 200))
+        elif action_type == "ОПАСНОСТЬ":
+            type_item.setBackground(QColor(255, 100, 100))
+            type_item.setForeground(QColor(255, 255, 255))
         else:
-            type_item.setBackground(QColor(240, 240, 240))  # серый
+            type_item.setBackground(QColor(240, 240, 240))
         
         # Действие
         action_item = QTableWidgetItem(action_name)
@@ -160,20 +147,20 @@ class InfoTableWidget(QWidget):
         # Детали
         details_item = QTableWidgetItem(details)
         
-        # Устанавливаем элементы в таблицу
+        # Устанавливаем элементы
         self.table.setItem(row_position, 0, time_item)
         self.table.setItem(row_position, 1, type_item)
         self.table.setItem(row_position, 2, action_item)
         self.table.setItem(row_position, 3, details_item)
         
-        # Автоматическая прокрутка к новой строке
+        # Прокрутка к новой строке
         self.table.scrollToBottom()
         
-        # Обновляем счётчик
+        # Обновляем статистику
         self.update_stats()
         
-        # Добавляем новые пустые строки для наглядности
-        self.add_empty_rows(3)
+        # Заполняем пустыми строками до конца
+        self.fill_empty_rows_to_fill_space()
         
     def remove_empty_rows(self):
         """Удаляет все пустые строки перед добавлением новой записи"""
@@ -325,3 +312,60 @@ class InfoTableWidget(QWidget):
                 }
                 data.append(row_data)
         return data
+    def fill_empty_rows_to_fill_space(self):
+        """Заполняет пустыми строками до заполнения всего видимого пространства"""
+        # Получаем высоту таблицы и высоту строки
+        table_height = self.table.viewport().height()
+        row_height = self.table.rowHeight(0) if self.table.rowCount() > 0 else 25
+        
+        if row_height <= 0:
+            row_height = 25
+        
+        # Сколько строк помещается
+        visible_rows = max(5, table_height // row_height)
+        current_rows = self.table.rowCount()
+        
+        # Считаем реальные (непустые) строки
+        non_empty_count = 0
+        for row in range(current_rows):
+            is_empty = True
+            for col in range(4):
+                item = self.table.item(row, col)
+                if item and item.text().strip():
+                    is_empty = False
+                    break
+            if not is_empty:
+                non_empty_count += 1
+        
+        # Удаляем все пустые строки
+        rows_to_remove = []
+        for row in range(current_rows - 1, -1, -1):
+            is_empty = True
+            for col in range(4):
+                item = self.table.item(row, col)
+                if item and item.text().strip():
+                    is_empty = False
+                    break
+            if is_empty:
+                rows_to_remove.append(row)
+        
+        for row in rows_to_remove:
+            self.table.removeRow(row)
+        
+        # Добавляем пустые строки, чтобы заполнить пространство
+        current_non_empty = non_empty_count
+        needed_empty = max(visible_rows - current_non_empty, 5)  # минимум 5 пустых строк
+        
+        for _ in range(needed_empty):
+            row_position = self.table.rowCount()
+            self.table.insertRow(row_position)
+            for col in range(4):
+                empty_item = QTableWidgetItem("")
+                empty_item.setFlags(empty_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.table.setItem(row_position, col, empty_item)
+
+    # Переопределите метод resizeEvent для автоматического обновления при изменении размера:
+    def resizeEvent(self, event):
+        """При изменении размера окна перезаполняем пустыми строками"""
+        super().resizeEvent(event)
+        self.fill_empty_rows_to_fill_space()

@@ -5,6 +5,8 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QSlider, QHBoxLayout, 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap
 import cv2
+from fire_detection_thread import FireDetectionThread
+from fire_detector import FireDetector
 from image_thread import ImageLoaderThread
 from shelf_detector import YOLOShelfDetector, DetectionMethod, Shelf, ShelfCell
 from video_thread import VideoPlayerThread
@@ -19,6 +21,7 @@ class VideoWidget(QWidget):
     camera_mode_changed = pyqtSignal(bool)  # True = камера, False = видео
     person_detected_signal = pyqtSignal(int, list)  # количество людей, список позиций
     shelves_detected_signal = pyqtSignal(list, list)  # полки, ячейки
+    fire_detected_signal = pyqtSignal(list, list)  # возгорания, дым
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("VideoWidget")
@@ -65,7 +68,63 @@ class VideoWidget(QWidget):
         self.shelf_detection_interval = 5  # Каждый 5-й кадр
         self.current_shelves = []
         self.current_cells = []
+        # Добавляем детектор возгорания
+        self.fire_detector = FireDetector()
+        self.fire_detection_enabled = False
+        self.detect_smoke = True
+        self.fire_detection_interval = 3  # Каждый 3-й кадр
+        
+        # Создаем поток для детекции возгорания
+        self.fire_detection_thread = FireDetectionThread()
+        self.fire_detection_thread.fire_detection_ready.connect(self.on_fire_detection_ready)
+        
+        # Подключаем сигнал ошибок
+        self.fire_detector.detection_error.connect(self.on_fire_detection_error)
+        
+        self.current_fire_detections = []  # Текущие обнаружения
     
+    def enable_fire_detection(self, enabled: bool, detect_smoke: bool = True, use_motion: bool = False):
+        """Включает/выключает обнаружение возгораний"""
+        self.fire_detection_enabled = enabled
+        self.detect_smoke = detect_smoke
+        self.use_motion = use_motion
+        self.frame_counter = 0
+        
+        if enabled:
+            # Принудительно запускаем детекцию на текущем кадре
+            if self.current_frame is not None:
+                self.fire_detection_thread.set_frame(
+                    self.current_frame, 
+                    detect_smoke=detect_smoke,
+                    use_motion=use_motion
+                )
+                self.fire_detection_thread.start()
+            self.redisplay_current_frame()
+        else:
+            self.current_fire_detections = []
+            self.redisplay_current_frame()
+    
+    def on_fire_detection_ready(self, detections):
+        """Обработка результатов детекции возгорания"""
+        if not self.fire_detection_enabled:
+            return
+        
+        self.current_fire_detections = detections
+        
+        # Разделяем огонь и дым
+        fires = [d for d in detections if d[4] == 'fire']
+        smokes = [d for d in detections if d[4] == 'smoke']
+        
+        print(f"[FIRE DETECTION] Обнаружено {len(fires)} очагов возгорания, {len(smokes)} областей дыма")
+        
+        # Отправляем сигнал в main для записи в таблицу
+        self.fire_detected_signal.emit(fires, smokes)
+        
+        # Перерисовываем кадр
+        self.redisplay_current_frame()
+    def on_fire_detection_error(self, error_message):
+        """Обработчик ошибок детекции"""
+        print(f"[FIRE DETECTION ERROR] {error_message}")
     def setup_ui(self):
         """Создаёт интерфейс виджета"""
         layout = QVBoxLayout()
@@ -423,15 +482,15 @@ class VideoWidget(QWidget):
             self.current_cells = []
             self.redisplay_current_frame()
     def redisplay_current_frame(self):
-        """Перерисовывает текущий кадр с детекциями"""
+        """Обновленный метод для перерисовки кадра со всеми детекциями"""
         if self.current_frame is not None:
             frame = self.current_frame.copy()
             
-            # Рисуем детекции людей (если есть)
+            # Рисуем детекции людей
             if self.person_detection_enabled and hasattr(self, 'current_detections') and self.current_detections:
                 frame = self.person_detector.draw_detections(frame, self.current_detections)
             
-            # Рисуем ячейки
+            # Рисуем детекции полок
             if self.shelf_detection_enabled and self.current_cells:
                 frame = self.shelf_detector.draw_detections(
                     frame,
@@ -440,6 +499,10 @@ class VideoWidget(QWidget):
                     draw_shelves=False,
                     draw_cells=True
                 )
+            
+            # Рисуем детекции возгораний
+            if self.fire_detection_enabled and self.current_fire_detections:
+                frame = self.fire_detector.draw_detections(frame, self.current_fire_detections)
             
             qt_image = self.processor.numpy_to_qimage(frame)
             if qt_image and not qt_image.isNull():
@@ -505,19 +568,20 @@ class VideoWidget(QWidget):
                 )
                 self.video_label.setPixmap(scaled_pixmap)
     def display_frame(self, qt_image):
-        """Отображает кадр на QLabel"""
+        """Обновленный метод display_frame с детекцией возгорания"""
         if not qt_image.isNull() and self.video_label:
             try:
                 self.frame_counter += 1
                 current_frame = None
-                # Сначала получаем кадр из QImage
+                
+                # Получаем кадр из QImage
                 original_frame = self.processor.qimage_to_numpy(qt_image)
                 
-                # Сохраняем оригинальный кадр ТОЛЬКО если его еще нет
+                # Сохраняем оригинальный кадр
                 if original_frame is not None and self.original_frame is None:
                     self.original_frame = original_frame.copy()
                 
-                # Применяем эффекты если есть активный эффект
+                # Применяем эффекты
                 if hasattr(self, 'current_operation') and self.current_operation != "none" and original_frame is not None:
                     processed_frame = self.processor.process_frame(
                         original_frame, self.current_operation, self.operation_params
@@ -530,8 +594,8 @@ class VideoWidget(QWidget):
                     current_frame = original_frame
                 
                 self.current_frame = current_frame
-                self.current_detections = []
-                # Обнаружение людей (только если нужно и не в режиме принудительного)
+                
+                # Обнаружение людей
                 if (self.person_detection_enabled and 
                     current_frame is not None and 
                     self.frame_counter % self.detection_interval == 0 and
@@ -540,18 +604,29 @@ class VideoWidget(QWidget):
                     self.detection_thread.set_frame(small_frame, self.detection_threshold)
                     self.detection_thread.start()
                 
-                # Обнаружение полок (только если нужно и не в режиме принудительного)
+                # Обнаружение полок
                 if (self.shelf_detection_enabled and 
                     current_frame is not None and 
                     self.frame_counter % self.shelf_detection_interval == 0):
-                    # Прямой вызов без потока
                     shelves, cells = self.shelf_detector.detect_shelves(
-                        current_frame,  # Оригинальный размер
+                        current_frame,
                         method=self.shelf_detection_method
                     )
                     self.on_shelves_detected(shelves, cells)
                 
-                # Отображаем кадр с детекциями
+                # Обнаружение возгораний (НОВОЕ)
+                if (self.fire_detection_enabled and 
+                    current_frame is not None and 
+                    self.frame_counter % self.fire_detection_interval == 0 and
+                    not self.fire_detection_thread.isRunning()):
+                    self.fire_detection_thread.set_frame(
+                        current_frame,
+                        detect_smoke=self.detect_smoke,
+                        use_motion=self.use_motion
+                    )
+                    self.fire_detection_thread.start()
+                
+                # Отображаем кадр со всеми детекциями
                 self.update_display_frame_with_detections(qt_image)
                 
             except Exception as e:
